@@ -178,6 +178,16 @@ Acceptance:
 - [self] One level of undo restores the previous clip and segment.
 Status: done
 
+### S-028 Keep the sound in MP4 exports
+As the user, I export a segment and the MP4 has the clip's sound, cut to the same frames, reversed on the ping-pong return, and slowed with the picture.
+Depends: S-016
+Acceptance:
+- [unit] Frame order splits into forward and backward audio runs; a wrapped segment splits at the jump.
+- [self] The MP4 has an audio track as long as the picture.
+- [self] Ping-pong sound rises, then falls back.
+- [self] At half speed the sound lasts twice as long and keeps its pitch.
+Status: done
+
 ## M5 Compatibility
 
 ### S-022 Play MKV, AVI, FLV, and AV1 through ffmpeg
@@ -231,9 +241,8 @@ Status: todo
 - Backup of app.asar versions: git replaces it.
 
 ## Known gaps
-- MP4 export has no audio (the old app kept it). Needs reversal and time-stretch for ping-pong and slow speeds.
 - S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
 - S-002, S-011..S-014, S-026, S-027 not verified or only partly built (Open With, Dock drop, icon).
 
 ## Later
-- Per-folder recents, frame-by-frame annotation, audio export.
+- Per-folder recents, frame-by-frame annotation.

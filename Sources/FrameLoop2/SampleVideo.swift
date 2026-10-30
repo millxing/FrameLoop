@@ -4,7 +4,7 @@ import AppKit
 /// Test clips for self-tests and snapshots: a moving gradient with the frame number on it.
 enum SampleVideo {
     @MainActor
-    static func make(at url: URL, frames: Int = 90, fps: Int32 = 30, width: Int = 640, height: Int = 360) async throws {
+    static func make(at url: URL, frames: Int = 90, fps: Int32 = 30, width: Int = 640, height: Int = 360, sound: Bool = true) async throws {
         try? FileManager.default.removeItem(at: url)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -16,10 +16,22 @@ enum SampleVideo {
             kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
         ])
         writer.add(input)
+        // A tone that rises from 400 to 1200 Hz over the clip, so tests can tell forward from backward and fast from slow.
+        let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44_100, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 96_000,
+        ])
+        var feeder = sound ? AudioFeeder(sweep(seconds: Double(frames) / Double(fps))) : nil
+        if feeder != nil { writer.add(audioInput) }
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
         for index in 0..<frames {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
+            var ahead = Double(index) / Double(fps) + 0.5
+            feeder?.feed(audioInput, until: ahead)
+            while !input.isReadyForMoreMediaData {
+                try await Task.sleep(for: .milliseconds(2))
+                ahead += 0.25
+                feeder?.feed(audioInput, until: ahead)
+            }
             var buffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, adaptor.pixelBufferPool!, &buffer)
             guard let buffer else { continue }
@@ -47,8 +59,26 @@ enum SampleVideo {
             adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: fps))
         }
         input.markAsFinished()
+        while feeder?.isDone == false {
+            feeder?.feed(audioInput, until: .infinity)
+            if feeder?.isDone == false { try await Task.sleep(for: .milliseconds(2)) }
+        }
         await writer.finishWriting()
         if writer.status != .completed { throw writer.error ?? MediaError.noFrames }
+    }
+
+    nonisolated private static func sweep(seconds: Double) -> AVAudioPCMBuffer {
+        let rate = 44_100.0
+        let count = Int(seconds * rate)
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))!
+        buffer.frameLength = AVAudioFrameCount(count)
+        let samples = buffer.floatChannelData![0]
+        for n in 0..<count {
+            let t = Double(n) / rate
+            samples[n] = Float(0.5 * sin(2 * .pi * (400 * t + 400 * t * t / seconds)))
+        }
+        return buffer
     }
 
     /// The clips in the sample folder, made once per run.

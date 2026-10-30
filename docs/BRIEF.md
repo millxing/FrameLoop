@@ -8,7 +8,7 @@ FrameLoop (Electron, React, ffmpeg). Decided by the agent: same jobs, rebuilt na
 ## Main jobs
 1. Open a video (Open, drop, Finder "Open With", or pick from a folder shortcut) and scrub or step it frame by frame.
 2. Mark a segment (start, end) and loop it forward or ping-pong (reverse loop), at 1x, 0.75x, 0.5x, 0.25x.
-3. Export: PNG screenshot of the current frame, MP4 of the segment (H.264, 24 fps, 768x512 letterboxed), or animated GIF (15 fps, max 640 px wide). Files are auto-numbered (`ss00000001.png`, `loop00000001.mp4`).
+3. Export: PNG screenshot of the current frame, MP4 of the segment (H.264 with AAC sound, 24 fps, 768x512 letterboxed), or animated GIF (15 fps, max 640 px wide). Files are auto-numbered (`ss00000001.png`, `loop00000001.mp4`).
 4. Edit the clip: delete the selection, append another video, undo.
 
 ## Data
@@ -29,5 +29,5 @@ Native with the system accent color, dark-leaning player surface, Liquid Glass t
 
 ## Not in version one
 - Timeline editing beyond delete-selection, append, undo.
-- Audio export, subtitles, filters.
+- Subtitles, filters.
 - iCloud sync or any network feature.

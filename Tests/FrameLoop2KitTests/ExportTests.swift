@@ -27,3 +27,28 @@ import Testing
     #expect(ExportPlan.gifSize(sourceWidth: 1920, sourceHeight: 1080, maxWidth: 640) == (640, 360))
     #expect(ExportPlan.gifSize(sourceWidth: 320, sourceHeight: 240, maxWidth: 640) == (320, 240))
 }
+
+private let tenFrames = (0..<10).map { FrameInfo(index: $0, pts: Double($0) * 0.1, duration: 0.1) }
+
+private func matches(_ run: AudioRun, _ start: Double, _ end: Double, reversed: Bool) -> Bool {
+    abs(run.start - start) < 1e-9 && abs(run.end - end) < 1e-9 && run.reversed == reversed
+}
+
+@Test func audioRunsForwardIsOneRun() {
+    let runs = ExportPlan.audioRuns(order: [2, 3, 4, 5], frames: tenFrames)
+    #expect(runs.count == 1 && matches(runs[0], 0.2, 0.6, reversed: false))
+}
+
+@Test func audioRunsPingPongGoesForwardThenBack() {
+    let runs = ExportPlan.audioRuns(order: Timeline.pingPongOrder([2, 3, 4, 5, 6]), frames: tenFrames)
+    #expect(runs.count == 2)
+    #expect(matches(runs[0], 0.2, 0.7, reversed: false))
+    #expect(matches(runs[1], 0.3, 0.6, reversed: true))
+}
+
+@Test func audioRunsWrappedSegmentSplitsAtTheJump() {
+    let runs = ExportPlan.audioRuns(order: [8, 9, 0, 1], frames: tenFrames)
+    #expect(runs.count == 2)
+    #expect(matches(runs[0], 0.8, 1.0, reversed: false))
+    #expect(matches(runs[1], 0.0, 0.2, reversed: false))
+}

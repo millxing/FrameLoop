@@ -79,6 +79,8 @@ nonisolated enum Exporter {
         let (width, height) = mp4Size
         let box = ExportPlan.letterbox(sourceWidth: video.width, sourceHeight: video.height,
                                        frameWidth: width, frameHeight: height)
+        // Sound first: it is cut to the same frames, so a bad audio track fails before any video work.
+        var audio = try await AudioExport.render(video: video, order: order, speed: speed).map(AudioFeeder.init)
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -97,6 +99,13 @@ nonisolated enum Exporter {
             kCVPixelBufferHeightKey as String: height,
         ])
         writer.add(input)
+        let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: AudioExport.sampleRate,
+            AVNumberOfChannelsKey: Int(AudioExport.channelCount),
+            AVEncoderBitRateKey: 192_000,
+        ])
+        if audio != nil { writer.add(audioInput) }
         guard writer.startWriting() else { throw ExportError.writerFailed(writer.error?.localizedDescription ?? "cannot start") }
         writer.startSession(atSourceTime: .zero)
 
@@ -133,14 +142,26 @@ nonisolated enum Exporter {
                     context.draw(image, in: rect)
                 }
                 CVPixelBufferUnlockBaseAddress(buffer, [])
+                // The writer interleaves audio and video, so keep audio flowing a little ahead of the picture
+                // or the video input would wait on it forever.
+                var ahead = Double(tick) / mp4FPS + 0.5
+                audio?.feed(audioInput, until: ahead)
                 while !input.isReadyForMoreMediaData {
                     try Task.checkCancellation()
                     try await Task.sleep(for: .milliseconds(4))
+                    // The writer may hold the video back until audio is further along.
+                    ahead += 0.25
+                    audio?.feed(audioInput, until: ahead)
                 }
                 adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(tick), timescale: CMTimeScale(mp4FPS)))
                 if tick % 6 == 0 { progress(Double(tick) / Double(outputFrames.count)) }
             }
             input.markAsFinished()
+            while let remaining = audio, !remaining.isDone {
+                try Task.checkCancellation()
+                audio?.feed(audioInput, until: .infinity)
+                if audio?.isDone == false { try await Task.sleep(for: .milliseconds(4)) }
+            }
             await writer.finishWriting()
             guard writer.status == .completed else {
                 throw ExportError.writerFailed(writer.error?.localizedDescription ?? "unknown error")

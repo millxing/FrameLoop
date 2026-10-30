@@ -7,7 +7,38 @@ public struct Letterbox: Sendable, Equatable {
     public var height: Int
 }
 
+/// A stretch of source time the export plays in one direction.
+public struct AudioRun: Sendable, Equatable {
+    public var start: Double
+    public var end: Double
+    public var reversed: Bool
+
+    public init(start: Double, end: Double, reversed: Bool) {
+        self.start = start
+        self.end = end
+        self.reversed = reversed
+    }
+}
+
 public enum ExportPlan {
+    /// Splits the frame order into runs of consecutive frames, forward or backward, so audio can be cut and reversed to match.
+    public static func audioRuns(order: [Int], frames: [FrameInfo]) -> [AudioRun] {
+        var runs: [AudioRun] = []
+        var first = 0
+        while first < order.count {
+            var last = first
+            if first + 1 < order.count, order[first + 1] == order[first] - 1 {
+                while last + 1 < order.count, order[last + 1] == order[last] - 1 { last += 1 }
+                runs.append(AudioRun(start: frames[order[last]].pts, end: frames[order[first]].end, reversed: true))
+            } else {
+                while last + 1 < order.count, order[last + 1] == order[last] + 1 { last += 1 }
+                runs.append(AudioRun(start: frames[order[first]].pts, end: frames[order[last]].end, reversed: false))
+            }
+            first = last + 1
+        }
+        return runs
+    }
+
     /// Source frame to show at each output tick. Each frame lasts its own
     /// duration divided by `speed`, so slow motion repeats frames.
     public static func outputFrames(order: [Int], durations: [Double], speed: Double, fps: Double) -> [Int] {

@@ -162,8 +162,92 @@ enum SelfTest {
         check("S-018 cancelling an export leaves no partial file", after == before, "\(before) -> \(after)")
         check("S-018 the job is cleared", model.job == nil)
 
+        try await audioChecks(model: model)
         try await editChecks(model: model, sample: sample)
         try await compatibilityChecks(model: model, sample: sample)
+    }
+
+    /// The test clip's tone rises from 400 to 1200 Hz over 3 s, so the pitch at any moment says which source second is playing.
+    private static func audioChecks(model: PlayerModel) async throws {
+        model.setSegmentStart(frame: 10)
+        model.setSegmentEnd(frame: 30)
+
+        func exported() async throws -> (url: URL, samples: [Float], seconds: Double, video: Double)? {
+            model.toast = nil
+            model.export(.mp4)
+            await model.waitForJob()
+            guard let url = model.toast?.url else { return nil }
+            let asset = AVURLAsset(url: url)
+            guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else { return nil }
+            let video = try await videoTrack.load(.timeRange).duration.seconds
+            let samples = try await readSamples(asset)
+            return (url, samples, Double(samples.count) / 44_100, video)
+        }
+
+        // S-028 forward, normal speed
+        if let result = try await exported() {
+            check("S-028 MP4 has a sound track", !result.samples.isEmpty)
+            check("S-028 sound is as long as the picture", abs(result.seconds - result.video) < 0.1, "\(result.seconds) vs \(result.video)")
+            let start = pitch(result.samples, at: 0.05)
+            let end = pitch(result.samples, at: result.seconds - 0.1)
+            check("S-028 sound rises when played forward", end > start + 80, "\(start) -> \(end)")
+        } else { check("S-028 forward export finished", false, model.message ?? "no file") }
+
+        // S-028 ping-pong: up, then back down
+        model.pingPong = true
+        if let result = try await exported() {
+            check("S-028 ping-pong sound is as long as the picture", abs(result.seconds - result.video) < 0.1, "\(result.seconds) vs \(result.video)")
+            let first = pitch(result.samples, at: 0.05)
+            let top = pitch(result.samples, at: 0.65)
+            let last = pitch(result.samples, at: result.seconds - 0.1)
+            check("S-028 ping-pong sound rises, then falls back", top > first + 80 && top > last + 80, "\(first) / \(top) / \(last)")
+        } else { check("S-028 ping-pong export finished", false, model.message ?? "no file") }
+        model.pingPong = false
+
+        // S-028 half speed: twice as long, same pitch
+        model.speed = 0.5
+        if let result = try await exported() {
+            check("S-028 half speed doubles the sound", abs(result.seconds - 2 * 21.0 / 30) < 0.15, "\(result.seconds)")
+            let start = pitch(result.samples, at: 0.15)
+            check("S-028 half speed keeps the pitch", (430...580).contains(start), "\(start)")
+        } else { check("S-028 half-speed export finished", false, model.message ?? "no file") }
+        model.speed = 1
+        model.segment = nil
+        model.toast = nil
+    }
+
+    private static func readSamples(_ asset: AVAsset) async throws -> [Float] {
+        guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return [] }
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 44_100, AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true, AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ])
+        reader.add(output)
+        reader.startReading()
+        var samples: [Float] = []
+        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
+            var length = 0
+            var pointer: UnsafeMutablePointer<Int8>?
+            CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &pointer)
+            if let pointer {
+                pointer.withMemoryRebound(to: Float.self, capacity: length / 4) {
+                    samples.append(contentsOf: UnsafeBufferPointer(start: $0, count: length / 4))
+                }
+            }
+        }
+        return samples
+    }
+
+    /// Pitch in Hz over the 0.1 s after `time`, from counting zero crossings.
+    private static func pitch(_ samples: [Float], at time: Double) -> Double {
+        let from = max(0, Int(time * 44_100))
+        let to = min(samples.count, from + 4_410)
+        guard to - from > 100 else { return 0 }
+        var crossings = 0
+        for n in (from + 1)..<to where (samples[n - 1] < 0) != (samples[n] < 0) { crossings += 1 }
+        return Double(crossings) / 2 / (Double(to - from) / 44_100)
     }
 
     private static func editChecks(model: PlayerModel, sample: URL) async throws {
