@@ -25,6 +25,14 @@ SwiftData database and no server.
 - Then check the grid: `tools/grid-lint.sh` and `swift tools/check-layout.swift /tmp/FrameLoop2-shots/*-layout.json`. Both print PASS.
 - A change is done when the build has no errors, the grid checks pass, and you looked at the light and dark snapshots.
 
+## Gotchas
+
+- Run the app through `open` (tools/selftest.sh and tools/snap.sh do). A binary started straight from a shell can come up with no window.
+- Builds need Xcode's toolchain: the command-line tools' SwiftPM is broken on this Mac. Run `export DEVELOPER_DIR="/Volumes/OWC Express 1M2 001/Xcode.app/Contents/Developer"` first.
+- Snapshots of the main window are degraded (blank sidebar, glass, and video) until the app that runs them has Screen Recording permission.
+- Icon build needs `sudo xcodebuild -runFirstLaunch` once; until then build.sh skips the icon.
+- Stories live in docs/STORIES.md; the old Electron app is in ~/Dropbox/CC/FrameLoop for behavior reference.
+
 ## Design rules
 
 - Use Apple's controls and system styles. Only the accent color is custom: `UI/Theme.swift` (`ThemeStore.defaultID`). People change it, and light or dark mode, in Settings > Appearance.

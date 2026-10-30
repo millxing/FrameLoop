@@ -42,9 +42,9 @@ sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" "$here/Info.plist.in" > "$app/Contents
 if [[ -d "$here/Icon/AppIcon.icon" ]]; then
   car="$here/Resources/Assets.car"
   if [[ ! -f "$car" || -n "$(find "$here/Icon/AppIcon.icon" -newer "$car" | head -1)" ]]; then
-    "$here/tools/make_icon.sh"
+    "$here/tools/make_icon.sh" || echo "icon skipped: run sudo xcodebuild -runFirstLaunch once"
   fi
-  cp -X "$car" "$here/Resources/AppIcon.icns" "$app/Contents/Resources/"
+  [[ -f "$car" ]] && cp -X "$car" "$here/Resources/AppIcon.icns" "$app/Contents/Resources/"
 fi
 xattr -cr "$app"
 codesign --force --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true

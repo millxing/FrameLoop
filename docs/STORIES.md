@@ -11,7 +11,7 @@ Acceptance:
 - [snap] Empty window shows "Open or drop a video" and the supported formats.
 - [snap] Loaded window shows the frame, file name in the title, and the transport bar.
 - [unit] Frame list for a sample MP4 has the right count and rising timestamps.
-Status: todo
+Status: done
 
 ### S-002 Play and pause
 As the user, I press Space to play or pause.
@@ -29,7 +29,7 @@ Acceptance:
 - [unit] Stepping uses the frame list: Right at the last frame stays; Left at frame 0 stays.
 - [self] After a step the displayed frame index and timecode update and match the player time.
 - [snap] Frame counter and timecode (mm:ss.mmm) show beside the playhead.
-Status: todo
+Status: done
 
 ### S-004 Scrub the timeline
 As the user, I drag the playhead and the picture follows frame-accurately. Buttons jump 10 seconds back and forward.
@@ -37,7 +37,7 @@ Depends: S-001
 Acceptance:
 - [unit] Time to frame lookup snaps to the frame at or before the time.
 - [self] Dragging seeks with zero tolerance and lands on exact frames.
-Status: todo
+Status: done
 
 ### S-005 Mark a segment
 As the user, I press I and O (or drag the two handles) to set the segment start and end; Reset clears it.
@@ -47,7 +47,7 @@ Acceptance:
 - [snap] The timeline shows the segment as a highlighted range with two handles.
 - [unit] End before start wraps around the end of the clip (frame ranges as in the old app).
 - [self] Reset removes the segment.
-Status: todo
+Status: done
 
 ### S-006 Loop the segment forward
 As the user, I press L and the segment plays on repeat.
@@ -55,7 +55,7 @@ Depends: S-005
 Acceptance:
 - [self] Playback jumps from the end frame to the start frame with no visible stall.
 - [self] Without a segment, L loops the whole clip.
-Status: todo
+Status: done
 
 ### S-007 Ping-pong loop
 As the user, I turn on "Reverse loop" and the segment plays forward, then backward, then forward.
@@ -64,7 +64,7 @@ Acceptance:
 - [unit] Reverse frame order is 0..n-1 then n-2..1 (same as the old `reverseFrameOrder`).
 - [self] The loop alternates direction at the segment ends without building a temporary file.
 - [manual] Reversed playback is smooth on H.264 and HEVC clips.
-Status: todo
+Status: done
 
 ### S-008 Change playback speed
 As the user, I pick 1x, 0.75x, 0.5x or 0.25x and playback, loops, and exports use it.
@@ -72,14 +72,14 @@ Depends: S-002
 Acceptance:
 - [unit] Speed list is exactly 1, 0.75, 0.5, 0.25.
 - [self] Pitch stays natural at reduced speed.
-Status: todo
+Status: done
 
 ### S-009 Mirror the picture
 As the user, I flip the video horizontally for viewing, screenshots, and exports.
 Depends: S-001
 Acceptance:
 - [self] The mirror toggle flips the displayed picture; screenshots and exports match it.
-Status: todo
+Status: done
 
 ## M2 Library
 
@@ -89,7 +89,7 @@ Screens: sidebar-folders
 Acceptance:
 - [unit] Folder listing keeps only supported extensions and sorts case-insensitively.
 - [snap] Sidebar shows the folders and the video list; the open file is highlighted.
-Status: todo
+Status: done
 
 ### S-011 Open a video from the sidebar
 As the user, I click a video in the list and it opens in the current window.
@@ -128,7 +128,7 @@ Acceptance:
 - [unit] Next file counter is the max of saved counter and existing files plus 1.
 - [self] The PNG matches the displayed frame size, mirrored if mirror is on.
 - [snap] A toast confirms the saved file name.
-Status: todo
+Status: done
 
 ### S-016 Export the segment as MP4
 As the user, I choose "Export MP4 H.264, 24 FPS, 768x512 (letterboxed)" and get `loopNNNNNNNN.mp4` of the segment, honoring speed, mirror, and ping-pong.
@@ -138,21 +138,21 @@ Acceptance:
 - [unit] Letterbox rect fits inside 768x512 with black bars and even sizes.
 - [self] Output has the right duration and frame rate.
 - [snap] A progress sheet shows percent and a Cancel button.
-Status: todo
+Status: done
 
 ### S-017 Export the segment as GIF
 As the user, I choose "Export animated GIF, 15 FPS, max 640 px wide" and get a `.gif` in the export folder.
 Depends: S-016
 Acceptance:
 - [self] GIF is 15 fps and at most 640 px wide, loops forever.
-Status: todo
+Status: done
 
 ### S-018 Cancel a running job
 As the user, I press Cancel and the export stops and leaves no partial file.
 Depends: S-016
 Acceptance:
 - [self] Cancel removes the unfinished output.
-Status: todo
+Status: done
 
 ## M4 Edit
 

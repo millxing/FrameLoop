@@ -1,9 +1,10 @@
+@preconcurrency import AVFoundation
 import AppKit
-import SwiftData
 import FrameLoop2Kit
+import ImageIO
 
-/// Self-test for agents: runs the app's real functions on a test store,
-/// prints PASS or FAIL per check, and quits with exit code 0 or 1.
+/// Self-test for agents: runs the app's real functions on test clips, prints PASS or FAIL per check,
+/// and quits with exit code 0 or 1.
 ///   APP_STORE=/tmp/FrameLoop2-self.store ~/Applications/FrameLoop2.app/Contents/MacOS/FrameLoop2 --selftest
 /// (tools/selftest.sh does this.) Add a check for every story with logic.
 @MainActor
@@ -13,9 +14,11 @@ enum SelfTest {
     static var exitCode: Int32 = 0
     private static var failures = 0
     private static var count = 0
+    private static var started = false
 
-    static func runIfRequested(model: AppModel) {
-        guard requested else { return }
+    static func runIfRequested(model: PlayerModel, library: Library) {
+        guard requested, !started else { return }
+        started = true
         // Print each line at once, so a crash keeps the lines before it.
         setvbuf(stdout, nil, _IOLBF, 0)
         guard Store.isOverridden else {
@@ -24,27 +27,166 @@ enum SelfTest {
             return
         }
         Task {
-            try? await Task.sleep(for: .seconds(0.5))
-            let context = model.container.mainContext
-            func items() -> [Item] { (try? context.fetch(FetchDescriptor<Item>())) ?? [] }
-
-            let before = items().count
-            model.addItem()
-            check("New Item adds one item", items().count == before + 1)
-            check("the new item is selected", model.selection != nil)
-
-            if let item = items().first(where: { $0.id == model.selection }) {
-                item.isStarred.toggle()
-                check("starring an item marks it starred", item.isStarred)
-                context.delete(item)
-                try? context.save()
-                check("deleting the item removes it", items().count == before)
-            }
-            check("titles are cleaned", ItemTitle.clean("  Buy   milk ") == "Buy milk")
-
+            do { try await run(model: model, library: library) } catch { check("self-test ran to the end", false, "\(error)") }
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)
         }
+    }
+
+    private static func run(model: PlayerModel, library: Library) async throws {
+        try? FileManager.default.removeItem(at: Store.scratch)
+        let sample = try await SampleVideo.prepare()
+
+        // S-001 open
+        await model.open(sample)
+        check("S-001 opening a clip loads 90 frames", model.video?.frames.count == 90, "\(model.video?.frames.count ?? -1)")
+        check("S-001 size and frame rate are read", model.video?.width == 640 && model.video?.height == 360 && abs((model.video?.frameRate ?? 0) - 30) < 0.01)
+        check("S-001 timestamps rise", zip(model.video!.frames, model.video!.frames.dropFirst()).allSatisfy { $0.pts < $1.pts })
+        await library.refresh()
+        check("S-010 the folder list shows both sample clips", library.files.map(\.lastPathComponent) == ["bouncing-square.mp4", "short-clip.mp4"], "\(library.files.map(\.lastPathComponent))")
+
+        // S-003 / S-004 stepping and seeking land on exact frames
+        model.step(by: 1)
+        check("S-003 step forward moves one frame", model.currentFrame == 1)
+        model.step(by: -5)
+        check("S-003 step back stops at frame 0", model.currentFrame == 0)
+        model.seek(toFrame: 10)
+        try await Task.sleep(for: .seconds(0.4))
+        check("S-004 seek shows the exact frame", Timeline.frameAtTime(model.video!.frames, time: model.player.currentTime().seconds) == 10,
+              "player at \(model.player.currentTime().seconds)")
+
+        // S-005 segment
+        model.markStart()
+        model.seek(toFrame: 30)
+        model.markEnd()
+        check("S-005 marks a segment", model.segment == Segment(startFrame: 10, endFrame: 30))
+        check("S-005 export order covers the segment", model.exportOrder().count == 21)
+        model.pingPong = true
+        check("S-007 reverse loop adds the way back", model.exportOrder().count == 40)
+        model.pingPong = false
+
+        // S-006 forward loop stays inside the segment and wraps
+        model.loopEnabled = true
+        model.seek(toFrame: 10)
+        model.play()
+        var seen: [Int] = []
+        for _ in 0..<75 {
+            try await Task.sleep(for: .milliseconds(20))
+            seen.append(model.currentFrame)
+        }
+        model.pause()
+        check("S-006 loop never leaves the segment", seen.allSatisfy { (9...31).contains($0) }, "\(Set(seen.filter { !(9...31).contains($0) }))")
+        let wrapped = zip(seen, seen.dropFirst()).contains { $0 > 25 && $1 < 15 }
+        check("S-006 loop jumps back to the start", wrapped, "frames \(seen.min() ?? -1)...\(seen.max() ?? -1)")
+
+        // S-007 ping-pong turns around
+        model.pingPong = true
+        model.seek(toFrame: 10)
+        model.play()
+        var sawBackward = false
+        var pingPongFrames: [Int] = []
+        for _ in 0..<110 {
+            try await Task.sleep(for: .milliseconds(20))
+            pingPongFrames.append(model.currentFrame)
+            if model.direction == .backward { sawBackward = true }
+        }
+        model.pause()
+        check("S-007 ping-pong plays backward", sawBackward)
+        check("S-007 ping-pong stays inside the segment", pingPongFrames.allSatisfy { (9...31).contains($0) }, "\(pingPongFrames.min() ?? -1)...\(pingPongFrames.max() ?? -1)")
+        model.pingPong = false
+        model.loopEnabled = false
+
+        // S-008 speed
+        model.speed = 0.5
+        model.seek(toFrame: 0)
+        model.play()
+        try await Task.sleep(for: .seconds(1))
+        model.pause()
+        check("S-008 half speed plays about half as far", (8...22).contains(model.currentFrame), "frame \(model.currentFrame)")
+        model.speed = 1
+
+        // S-015 screenshots, S-009 mirror
+        model.seek(toFrame: 0)
+        try await Task.sleep(for: .seconds(0.3))
+        model.saveScreenshot()
+        try await waitForToast(model)
+        let shot = model.toast?.url
+        check("S-015 screenshot is named ss00000001.png", shot?.lastPathComponent == "ss00000001.png", "\(shot?.lastPathComponent ?? "none")")
+        if let shot, let (w, h, left, right) = yellowSides(shot) {
+            check("S-015 screenshot is 640×360", w == 640 && h == 360)
+            check("S-015 the square is on the left", left && !right)
+        } else { check("S-015 screenshot can be read", false) }
+        model.toast = nil
+        model.mirrored = true
+        model.saveScreenshot()
+        try await waitForToast(model)
+        if let shot = model.toast?.url, let (_, _, left, right) = yellowSides(shot) {
+            check("S-009 mirrored screenshot flips the picture", right && !left)
+            check("S-015 second screenshot is numbered 2", shot.lastPathComponent == "ss00000002.png")
+        } else { check("S-009 mirrored screenshot can be read", false) }
+        model.toast = nil
+        model.mirrored = false
+
+        // S-016 MP4: segment 10...30 at 24 fps from 30 fps source
+        model.export(.mp4)
+        await model.waitForJob()
+        if let url = model.toast?.url {
+            let asset = AVURLAsset(url: url)
+            let track = try await asset.loadTracks(withMediaType: .video).first
+            let size = try await track?.load(.naturalSize)
+            let duration = try await asset.load(.duration).seconds
+            check("S-016 MP4 is 768×512", size == CGSize(width: 768, height: 512), "\(String(describing: size))")
+            check("S-016 MP4 lasts as long as the segment", abs(duration - 21.0 / 30.0) < 0.1, "\(duration)")
+            check("S-016 MP4 is named loop00000001.mp4", url.lastPathComponent == "loop00000001.mp4")
+        } else { check("S-016 MP4 export finished", false, model.message ?? "no file") }
+        model.toast = nil
+
+        // S-017 GIF
+        model.export(.gif)
+        await model.waitForJob()
+        if let url = model.toast?.url, let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
+            let frames = CGImageSourceGetCount(source)
+            let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            check("S-017 GIF has the right frame count", abs(frames - 11) <= 1, "\(frames)")
+            check("S-017 GIF is 640 wide at most", (image?.width ?? 9999) <= 640)
+        } else { check("S-017 GIF export finished", false, model.message ?? "no file") }
+        model.toast = nil
+
+        // S-018 cancel leaves nothing behind
+        let before = (try? FileManager.default.contentsOfDirectory(atPath: AppSettings.shared.exportDirectory))?.count ?? 0
+        model.segment = nil
+        model.export(.mp4)
+        model.cancelJob()
+        await model.waitForJob()
+        let after = (try? FileManager.default.contentsOfDirectory(atPath: AppSettings.shared.exportDirectory))?.count ?? 0
+        check("S-018 cancelling an export leaves no partial file", after == before, "\(before) -> \(after)")
+        check("S-018 the job is cleared", model.job == nil)
+    }
+
+    private static func waitForToast(_ model: PlayerModel) async throws {
+        for _ in 0..<150 {
+            if model.toast != nil { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    /// Whether a yellow pixel sits in the left or right third of the image's middle row.
+    private static func yellowSides(_ url: URL) -> (Int, Int, Bool, Bool)? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let data = { context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height)); return context.data }()
+        else { return nil }
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
+        let row = image.height / 2
+        func yellow(_ x: Int) -> Bool {
+            let offset = row * context.bytesPerRow + x * 4
+            return pixels[offset] > 200 && pixels[offset + 1] > 150 && pixels[offset + 2] < 120
+        }
+        let third = image.width / 3
+        return (image.width, image.height, (0..<third).contains { yellow($0) }, ((image.width - third)..<image.width).contains { yellow($0) })
     }
 
     private static func check(_ name: String, _ ok: Bool, _ detail: String = "") {

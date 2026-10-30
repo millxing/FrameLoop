@@ -4,22 +4,27 @@ import SwiftUI
 
 /// Screenshot mode for agents.
 ///   APP_STORE=/tmp/test.store APP_SNAPSHOT=/tmp/shots ~/Applications/FrameLoop2.app/Contents/MacOS/FrameLoop2
-/// writes <page>-light.png and <page>-dark.png for every sidebar page, and
+/// writes <page>-light.png and <page>-dark.png for every page (empty, loaded, segment, export), and
 /// settings-<tab>-light.png and settings-<tab>-dark.png for every Settings tab, then quits.
 /// Each PNG gets a <page>-<mode>-layout.json with the grid probes (tools/check-layout.swift).
-/// APP_SNAPSHOT_PAGES=all,starred limits the pages. Add "settings" to include Settings.
+/// APP_SNAPSHOT_PAGES=loaded,segment limits the pages. Add "settings" to include Settings.
 /// Add APP_ACCENT=<id> to see the pages in another accent.
 enum Snapshot {
-    static func runIfRequested(model: AppModel, openSettings: OpenSettingsAction) {
+    static var started = false
+
+    @MainActor
+    static func runIfRequested(model: PlayerModel, library: Library, openSettings: OpenSettingsAction) {
         let env = ProcessInfo.processInfo.environment
-        guard let dir = env["APP_SNAPSHOT"], !dir.isEmpty else { return }
-        // Snapshots never run against the real database.
+        guard let dir = env["APP_SNAPSHOT"], !dir.isEmpty, !started else { return }
+        // Snapshots never run against the real settings.
         guard Store.isOverridden else {
             print("SNAPSHOT refused: set APP_STORE to a file in /tmp")
             NSApp.terminate(nil)
             return
         }
+        started = true
         let only = env["APP_SNAPSHOT_PAGES"].map { Set($0.split(separator: ",").map(String.init)) }
+        func wanted(_ page: String) -> Bool { only?.contains(page) ?? true }
         Task {
             // A sleeping display gives screencapture nothing. Declaring user
             // activity wakes it; the assertion keeps it on until the run quits.
@@ -29,14 +34,38 @@ enum Snapshot {
             IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
                                         IOPMAssertionLevel(kIOPMAssertionLevelOn), "Snapshots" as CFString, &awake)
             try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            let sample = try? await SampleVideo.prepare()
+            await library.refresh()
             try? await Task.sleep(for: .seconds(1.5))
             for mode in ["light", "dark"] {
                 NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                for page in SidebarItem.allCases where only?.contains(page.rawValue) ?? true {
-                    model.sidebar = page
+                model.close()
+                if wanted("empty") {
                     try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/\(page.rawValue)-\(mode).png")
+                    capture(to: "\(dir)/empty-\(mode).png")
                 }
+                guard let sample else { continue }
+                await model.open(sample)
+                model.seek(toFrame: 40)
+                if wanted("loaded") {
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/loaded-\(mode).png")
+                }
+                model.setSegmentStart(frame: 20)
+                model.setSegmentEnd(frame: 62)
+                model.loopEnabled = true
+                if wanted("segment") {
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/segment-\(mode).png")
+                }
+                if wanted("export") {
+                    model.showSampleJob()
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/export-\(mode).png")
+                    model.clearJob()
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
+                model.loopEnabled = false
             }
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }
@@ -45,7 +74,7 @@ enum Snapshot {
                 for mode in ["light", "dark"] {
                     NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
                     for tab in SettingsTab.allCases {
-                        model.settingsTab = tab
+                        AppSettings.shared.settingsTab = tab
                         try? await Task.sleep(for: .seconds(0.8))
                         let settings = NSApp.windows.first { $0.isVisible && $0 !== main && !$0.isSheet }
                         capture(to: "\(dir)/settings-\(tab.rawValue)-\(mode).png", window: settings)

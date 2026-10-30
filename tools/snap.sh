@@ -1,14 +1,14 @@
 #!/bin/zsh
-# Snapshots of every page in light and dark, with seed data, on a fresh test store.
+# Snapshots of every page in light and dark, with sample clips, on test data in /tmp.
 # Usage: tools/snap.sh            all pages
-#        APP_SNAPSHOT_PAGES=all,settings tools/snap.sh
+#        APP_SNAPSHOT_PAGES=loaded,settings tools/snap.sh
+# Launches through LaunchServices (open): a binary started straight from a shell can come up with no window.
 set -u
-app=~/Applications/FrameLoop2.app/Contents/MacOS/FrameLoop2
-store=/tmp/FrameLoop2-test.store
 shots=/tmp/FrameLoop2-shots
+log=/tmp/FrameLoop2-snap.log
 # A crashed run leaves saved window state, and the next launch would wait on a "reopen windows?" alert.
 rm -rf ~/Library/Saved\ Application\ State/com.robschoen.frameloop2.savedState
-# Seed data only fills an empty store, so start from nothing.
-rm -f $store $store-shm $store-wal
 rm -rf $shots
-APP_STORE=$store APP_SEED=1 APP_SNAPSHOT=$shots $app
+: > $log
+open -W -n --env APP_STORE=/tmp/FrameLoop2-snap.store --env APP_SNAPSHOT=$shots --env APP_SNAPSHOT_PAGES="${APP_SNAPSHOT_PAGES:-empty,loaded,segment,export,settings}" --stdout $log --stderr $log ~/Applications/FrameLoop2.app
+cat $log

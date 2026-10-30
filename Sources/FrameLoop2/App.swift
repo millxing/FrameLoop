@@ -1,44 +1,34 @@
 import AppKit
-import SwiftData
+import FrameLoop2Kit
 import SwiftUI
 
 // FrameLoop2
 //   FrameLoop2                      the app
-//   APP_STORE=<file> FrameLoop2     use another database (tests, experiments)
-//   APP_SNAPSHOT=<dir> FrameLoop2   save a PNG of every sidebar page and Settings tab in light and dark mode, then quit
-//   APP_SEED=1 FrameLoop2           fill an empty /tmp store with sample items (tools/snap.sh)
-//   FrameLoop2 --selftest           run the self-test on a /tmp store and quit with 0 or 1 (tools/selftest.sh)
+//   APP_STORE=<file> FrameLoop2     test mode: settings and output stay in /tmp/FrameLoop2-scratch
+//   APP_SNAPSHOT=<dir> FrameLoop2   save a PNG of every page and Settings tab in light and dark mode, then quit
+//   FrameLoop2 --selftest           run the self-test and quit with 0 or 1 (tools/selftest.sh)
 //   APP_ACCENT=<id> FrameLoop2      run with another accent from Theme.all (UI/Theme.swift)
-//   APP_GRID=1 FrameLoop2           draw the 8 pt grid and the layout probes over the window
+//   APP_GRID=1 FrameLoop2           draw the grid and the layout probes over the window
 
 @main
 struct FrameLoop2App: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var model = AppModel(container: Store.makeContainer())
 
     var body: some Scene {
-        Window("FrameLoop2", id: "main") {
-            ContentView()
-                .environment(model)
+        WindowGroup("FrameLoop2", for: WindowRequest.self) { $request in
+            PlayerWindow(request: request)
                 .themed()
                 .overlay { if GridOverlay.enabled { GridOverlay() } }
-                .frame(minWidth: 760, minHeight: 480)
+        } defaultValue: {
+            WindowRequest()
         }
-        .modelContainer(model.container)
+        .restorationBehavior(.disabled)
         .defaultSize(width: 1100, height: 720)
         .windowToolbarStyle(.unified)
-        .commands {
-            SidebarCommands()
-            ToolbarCommands()
-            CommandGroup(replacing: .newItem) {
-                Button("New Item") { model.addItem() }
-                    .keyboardShortcut("n")
-            }
-        }
+        .commands { PlayerCommands() }
 
         Settings {
             SettingsView()
-                .environment(model)
                 .themed()
         }
         .windowResizability(.contentSize)
@@ -52,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        OpenRouter.shared.pending.append(contentsOf: urls.filter(MediaFormats.isSupported))
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     /// The self-test's result becomes the exit code, after a normal quit.
@@ -60,27 +54,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Where the data lives: ~/Library/Application Support/FrameLoop2/FrameLoop2.store
-enum Store {
-    /// True when APP_STORE points somewhere else (tests, snapshots, seed data).
-    static var isOverridden: Bool {
-        !(ProcessInfo.processInfo.environment["APP_STORE"] ?? "").isEmpty
-    }
+struct PlayerCommands: Commands {
+    @FocusedValue(\.player) private var player
+    @Environment(\.openWindow) private var openWindow
 
-    static var url: URL {
-        if let path = ProcessInfo.processInfo.environment["APP_STORE"], !path.isEmpty {
-            return URL(fileURLWithPath: path)
+    var body: some Commands {
+        SidebarCommands()
+        ToolbarCommands()
+        CommandGroup(replacing: .newItem) {
+            Button("New Window") { openWindow(value: WindowRequest()) }
+                .keyboardShortcut("n")
+            Button("Open Video…") {
+                if let url = Panels.chooseVideo(), let player { Task { await player.open(url) } }
+            }
+            .keyboardShortcut("o")
+            .disabled(player == nil)
+            Divider()
+            Button("Save Screenshot") { player?.saveScreenshot() }
+                .keyboardShortcut("s", modifiers: [])
+                .disabled(!(player?.canExport ?? false))
+            Button("Export MP4…") { player?.export(.mp4) }
+                .keyboardShortcut("e")
+                .disabled(!(player?.canExport ?? false))
+            Button("Export GIF…") { player?.export(.gif) }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(!(player?.canExport ?? false))
         }
-        let dir = URL.applicationSupportDirectory.appending(path: "FrameLoop2", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appending(path: "FrameLoop2.store")
-    }
-
-    static func makeContainer() -> ModelContainer {
-        do {
-            return try ModelContainer(for: Item.self, configurations: ModelConfiguration(url: url))
-        } catch {
-            fatalError("Could not open the database at \(url.path): \(error)")
+        CommandMenu("Playback") {
+            Button(player?.isPlaying == true ? "Pause" : "Play") { player?.togglePlay() }
+                .keyboardShortcut(.space, modifiers: [])
+            Divider()
+            Button("Previous Frame") { player?.step(by: -1) }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+            Button("Next Frame") { player?.step(by: 1) }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+            Button("Back 10 Seconds") { player?.skip(seconds: -10) }
+                .keyboardShortcut(.leftArrow, modifiers: .shift)
+            Button("Forward 10 Seconds") { player?.skip(seconds: 10) }
+                .keyboardShortcut(.rightArrow, modifiers: .shift)
+            Divider()
+            Button("Set Segment Start") { player?.markStart() }
+                .keyboardShortcut("i", modifiers: [])
+            Button("Set Segment End") { player?.markEnd() }
+                .keyboardShortcut("o", modifiers: [])
+            Button("Reset Segment") { player?.resetSegment() }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+                .disabled(player?.segment == nil)
+            Divider()
+            Button(player?.loopEnabled == true ? "Stop Looping" : "Loop Segment") { player?.loopEnabled.toggle() }
+                .keyboardShortcut("l", modifiers: [])
+            Button(player?.pingPong == true ? "Turn Off Reverse Loop" : "Reverse Loop") { player?.pingPong.toggle() }
+                .keyboardShortcut("r", modifiers: [])
+            Button(player?.mirrored == true ? "Unmirror Picture" : "Mirror Picture") { player?.mirrored.toggle() }
+                .keyboardShortcut("m", modifiers: [])
+            Menu("Speed") {
+                ForEach(Array(PlaybackSpeed.all.enumerated()), id: \.offset) { index, speed in
+                    Button(PlaybackSpeed.label(speed)) { player?.speed = speed }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .control)
+                }
+            }
         }
     }
 }
