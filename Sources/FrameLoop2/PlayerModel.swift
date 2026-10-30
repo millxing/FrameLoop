@@ -39,6 +39,8 @@ final class PlayerModel {
     @ObservationIgnored private var scrubbingWasPlaying: Bool?
     @ObservationIgnored private var reverseTask: Task<Void, Never>?
     @ObservationIgnored private var exportTask: Task<Void, Never>?
+    @ObservationIgnored private var loadTask: Task<LoadedVideo, Error>?
+    @ObservationIgnored private var undoStack: [LoadedVideo] = []
 
     init() {
         player.actionAtItemEnd = .pause
@@ -59,17 +61,59 @@ final class PlayerModel {
             return
         }
         pause()
+        guard let loaded = await loadVideo(url) else { return }
+        discardProxies()
+        undoStack = []
+        install(loaded)
+    }
+
+    /// Loads a file, first making a playable copy with ffmpeg when AVFoundation cannot read it.
+    private func loadVideo(_ url: URL) async -> LoadedVideo? {
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            job = nil
+            loadTask = nil
+        }
+        let task = Task { () throws -> LoadedVideo in
+            if MediaFormats.isNative(url) {
+                let asset = AVURLAsset(url: url)
+                if try await asset.load(.isPlayable) { return try await MediaLoader.load(asset: asset, url: url) }
+            }
+            await MainActor.run { job = Job(title: "Preparing media…", fraction: 0) }
+            let report: @Sendable (Double) -> Void = { [self] fraction in
+                Task { @MainActor in job?.fraction = fraction }
+            }
+            let copy = try await FFmpeg.makePlayableCopy(of: url, progress: report)
+            do {
+                var video = try await MediaLoader.load(asset: AVURLAsset(url: copy), url: url)
+                video.proxies = [copy]
+                return video
+            } catch {
+                try? FileManager.default.removeItem(at: copy)
+                throw error
+            }
+        }
+        loadTask = task
         do {
-            install(try await MediaLoader.load(url: url))
+            return try await task.value
+        } catch is CancellationError {
+            return nil
         } catch {
             message = error.localizedDescription
+            return nil
+        }
+    }
+
+    private func discardProxies() {
+        for video in [video].compactMap({ $0 }) + undoStack {
+            for proxy in video.proxies { try? FileManager.default.removeItem(at: proxy) }
         }
     }
 
     private func install(_ loaded: LoadedVideo) {
         let item = AVPlayerItem(asset: loaded.asset)
+        item.videoComposition = loaded.videoComposition
         item.audioTimePitchAlgorithm = .spectral
         player.replaceCurrentItem(with: item)
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
@@ -85,6 +129,8 @@ final class PlayerModel {
     /// Unloads the video and shows the empty window again.
     func close() {
         pause()
+        discardProxies()
+        undoStack = []
         player.replaceCurrentItem(with: nil)
         video = nil
         segment = nil
@@ -273,6 +319,82 @@ final class PlayerModel {
         segment = nil
     }
 
+    // MARK: Editing
+
+    var canUndo: Bool { !undoStack.isEmpty && job == nil && !isLoading }
+    var canDelete: Bool { video != nil && segment?.isComplete == true && job == nil && !isLoading }
+    var canAppend: Bool { video != nil && job == nil && !isLoading }
+
+    /// Cuts the marked segment out of the clip. The file on disk is not touched.
+    func deleteSelection() async {
+        guard canDelete, let video, let segment else { return }
+        pause()
+        let frames = video.frames
+        var edits = video.edits
+        // Cut at the middle between two frames, so rounding never keeps or drops a neighbour.
+        func boundary(before frame: Int) -> Double { frame == 0 ? 0 : (frames[frame - 1].pts + frames[frame].pts) / 2 }
+        func boundary(after frame: Int) -> Double { frame == frames.count - 1 ? video.duration : (frames[frame].pts + frames[frame + 1].pts) / 2 }
+        // Latest first, so an earlier cut does not shift the time of a later one.
+        for range in Timeline.segmentRanges(segment, frameCount: frames.count).sorted(by: { $0.lowerBound > $1.lowerBound }) {
+            edits.remove(from: boundary(before: range.lowerBound), to: boundary(after: range.upperBound))
+        }
+        guard !edits.pieces.isEmpty else {
+            message = "That would delete the whole clip."
+            return
+        }
+        let resumeFrame = Timeline.segmentRanges(segment, frameCount: frames.count).map(\.lowerBound).min() ?? 0
+        await applyEdit(edits: edits, sources: video.sources, resumeFrame: resumeFrame)
+    }
+
+    /// Adds another video to the end of the clip.
+    func append(_ url: URL) async {
+        guard canAppend, let video else { return }
+        pause()
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            message = "\(url.lastPathComponent) no longer exists."
+            return
+        }
+        guard let other = await loadVideo(url), let source = other.sources.first else { return }
+        var sources = video.sources
+        sources.append(source)
+        var edits = video.edits
+        edits.append(EditPiece(source: sources.count - 1, start: 0, end: source.duration))
+        await applyEdit(edits: edits, sources: sources, resumeFrame: video.frames.count, extraProxies: other.proxies)
+    }
+
+    func undoEdit() {
+        guard canUndo, let previous = undoStack.popLast() else { return }
+        pause()
+        let frame = currentFrame
+        install(previous)
+        seek(toFrame: frame)
+    }
+
+    private func applyEdit(edits: EditList, sources: [EditSource], resumeFrame: Int, extraProxies: [URL] = []) async {
+        guard let current = video else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let built = try await EditBuilder.build(sources: sources, edits: edits)
+            var edited = current
+            edited.asset = built.asset
+            edited.sources = sources
+            edited.edits = edits
+            edited.videoComposition = built.videoComposition
+            edited.proxies = current.proxies + extraProxies
+            edited.frames = edits.frames(sourceFrames: sources.map(\.frames))
+            edited.duration = edits.duration
+            if edited.frames.count > 1, let last = edited.frames.last {
+                edited.frameRate = Double(edited.frames.count - 1) / (last.pts - edited.frames[0].pts)
+            }
+            undoStack.append(current)
+            install(edited)
+            seek(toFrame: resumeFrame)
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
     // MARK: Saving
 
     var canExport: Bool { video != nil && job == nil }
@@ -336,6 +458,7 @@ final class PlayerModel {
 
     func cancelJob() {
         exportTask?.cancel()
+        loadTask?.cancel()
     }
 
     /// Awaits a running export. Used by the self-test.

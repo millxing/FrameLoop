@@ -1,6 +1,17 @@
 @preconcurrency import AVFoundation
 import FrameLoop2Kit
 
+/// One video file that edits draw from.
+nonisolated struct EditSource: Sendable {
+    var url: URL
+    var asset: AVAsset
+    var displaySize: CGSize
+    var transform: CGAffineTransform
+    var duration: Double
+    var frameRate: Double
+    var frames: [FrameInfo]
+}
+
 /// A video ready to play: the asset plus every frame's timing, read from the file's packets without decoding.
 nonisolated struct LoadedVideo: Sendable {
     var url: URL
@@ -11,6 +22,13 @@ nonisolated struct LoadedVideo: Sendable {
     var duration: Double
     var hasAudio: Bool
     var frameRate: Double
+    /// The files edits draw from, and how they are cut and joined. Starts as the file itself, uncut.
+    var sources: [EditSource] = []
+    var edits = EditList(pieces: [])
+    /// Set only when appended clips differ in size: scales each to the first clip's picture size.
+    var videoComposition: AVVideoComposition?
+    /// Temporary playable copies made from formats AVFoundation cannot open; deleted when this video is replaced.
+    var proxies: [URL] = []
 
     var summary: String {
         "\(width)×\(height) · \(String(format: "%g", (frameRate * 100).rounded() / 100)) fps"
@@ -46,17 +64,7 @@ nonisolated enum MediaLoader {
             track.load(.preferredTransform), asset.load(.duration))
         let hasAudio = try await !asset.loadTracks(withMediaType: .audio).isEmpty
 
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-        output.alwaysCopiesSampleData = false
-        reader.add(output)
-        guard reader.startReading() else { throw reader.error ?? MediaError.noFrames }
-        var times: [Double] = []
-        while let sample = output.copyNextSampleBuffer() {
-            guard CMSampleBufferGetNumSamples(sample) > 0 else { continue }
-            let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-            if time.isFinite { times.append(time) }
-        }
+        var times = try readTimes(asset: asset, track: track)
         guard !times.isEmpty else { throw MediaError.noFrames }
         times.sort()
 
@@ -73,9 +81,30 @@ nonisolated enum MediaLoader {
         let size = naturalSize.applying(transform)
         let end = frames[frames.count - 1].end
         let duration = assetDuration.seconds.isFinite && assetDuration.seconds > 0 ? max(assetDuration.seconds, end) : end
-        return LoadedVideo(url: url, asset: asset, frames: frames,
-                           width: Int(abs(size.width).rounded()), height: Int(abs(size.height).rounded()),
-                           duration: duration, hasAudio: hasAudio,
-                           frameRate: frames.count > 1 ? Double(frames.count - 1) / (frames[frames.count - 1].pts - frames[0].pts) : rate)
+        let measuredRate = frames.count > 1 ? Double(frames.count - 1) / (frames[frames.count - 1].pts - frames[0].pts) : rate
+        let displaySize = CGSize(width: abs(size.width).rounded(), height: abs(size.height).rounded())
+        var video = LoadedVideo(url: url, asset: asset, frames: frames,
+                                width: Int(displaySize.width), height: Int(displaySize.height),
+                                duration: duration, hasAudio: hasAudio, frameRate: measuredRate)
+        video.sources = [EditSource(url: url, asset: asset, displaySize: displaySize, transform: transform,
+                                    duration: duration, frameRate: measuredRate, frames: frames)]
+        video.edits = EditList(pieces: [EditPiece(source: 0, start: 0, end: duration)])
+        return video
+    }
+
+    /// Presentation times of every video frame, from the file's packets without decoding.
+    private static func readTimes(asset: AVAsset, track: AVAssetTrack) throws -> [Double] {
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        output.alwaysCopiesSampleData = false
+        reader.add(output)
+        guard reader.startReading() else { throw reader.error ?? MediaError.noFrames }
+        var times: [Double] = []
+        while let sample = output.copyNextSampleBuffer() {
+            guard CMSampleBufferGetNumSamples(sample) > 0 else { continue }
+            let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+            if time.isFinite { times.append(time) }
+        }
+        return times
     }
 }

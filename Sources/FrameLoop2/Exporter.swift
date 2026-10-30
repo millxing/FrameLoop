@@ -35,8 +35,9 @@ nonisolated enum Exporter {
     static let gifMaxWidth = 640
     static let gifMaxFrames = 1_500
 
-    private static func generator(for asset: AVAsset) -> AVAssetImageGenerator {
-        let generator = AVAssetImageGenerator(asset: asset)
+    private static func generator(for video: LoadedVideo) -> AVAssetImageGenerator {
+        let generator = AVAssetImageGenerator(asset: video.asset)
+        generator.videoComposition = video.videoComposition
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
         generator.appliesPreferredTrackTransform = true
@@ -62,7 +63,7 @@ nonisolated enum Exporter {
     @concurrent
     static func screenshot(video: LoadedVideo, frame: Int, mirrored: Bool, to url: URL) async throws {
         let time = cmTime(video.frames[frame].seekTime)
-        let image = try await generator(for: video.asset).image(at: time).image
+        let image = try await generator(for: video).image(at: time).image
         let final = mirrorIfNeeded(image, mirrored)
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
         else { throw ExportError.writerFailed("cannot create \(url.lastPathComponent)") }
@@ -99,7 +100,7 @@ nonisolated enum Exporter {
         guard writer.startWriting() else { throw ExportError.writerFailed(writer.error?.localizedDescription ?? "cannot start") }
         writer.startSession(atSourceTime: .zero)
 
-        let images = generator(for: video.asset)
+        let images = generator(for: video)
         images.maximumSize = CGSize(width: box.width * 2, height: box.height * 2)
         var cachedIndex = -1
         var cachedImage: CGImage?
@@ -166,7 +167,7 @@ nonisolated enum Exporter {
         CGImageDestinationSetProperties(destination, [
             kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0],
         ] as CFDictionary)
-        let images = generator(for: video.asset)
+        let images = generator(for: video)
         images.maximumSize = CGSize(width: size.width, height: size.height)
         let frameProperties = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / gifFPS]] as CFDictionary
         var cachedIndex = -1

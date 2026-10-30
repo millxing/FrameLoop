@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Started from a terminal, the process is not a foreground app yet.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
+        FFmpeg.removeAllProxies()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -50,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The self-test's result becomes the exit code, after a normal quit.
     func applicationWillTerminate(_ notification: Notification) {
+        FFmpeg.removeAllProxies()
         if SelfTest.requested { exit(SelfTest.exitCode) }
     }
 }
@@ -61,6 +63,20 @@ struct PlayerCommands: Commands {
     var body: some Commands {
         SidebarCommands()
         ToolbarCommands()
+        CommandGroup(replacing: .undoRedo) {
+            Button("Undo Edit") { player?.undoEdit() }
+                .keyboardShortcut("z")
+                .disabled(!(player?.canUndo ?? false))
+            Divider()
+            Button("Delete Selection") { Task { await player?.deleteSelection() } }
+                .keyboardShortcut(.delete, modifiers: [])
+                .disabled(!(player?.canDelete ?? false))
+            Button("Append Video…") {
+                if let url = Panels.chooseVideo(), let player { Task { await player.append(url) } }
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .disabled(!(player?.canAppend ?? false))
+        }
         CommandGroup(replacing: .newItem) {
             Button("New Window") { openWindow(value: WindowRequest()) }
                 .keyboardShortcut("n")

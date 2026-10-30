@@ -162,21 +162,21 @@ Depends: S-005
 Acceptance:
 - [unit] Remaining frame ranges for a middle, edge, and wrapped selection are right.
 - [self] The player shows the shortened clip; the original file is unchanged.
-Status: todo
+Status: done
 
 ### S-020 Append a video
 As the user, I choose Append and add another video to the end.
 Depends: S-001
 Acceptance:
 - [self] The playhead timeline covers both clips; frame stepping crosses the join.
-Status: todo
+Status: done
 
 ### S-021 Undo the last edit
 As the user, I press Command-Z to undo the last append or delete.
 Depends: S-019
 Acceptance:
 - [self] One level of undo restores the previous clip and segment.
-Status: todo
+Status: done
 
 ## M5 Compatibility
 
@@ -187,7 +187,7 @@ Acceptance:
 - [unit] Playback plan picks direct, remux, or transcode from stream info.
 - [self] An MKV with H.264 remuxes in seconds; an AVI transcodes with progress.
 - [self] Without ffmpeg installed, an error banner names what is missing.
-Status: todo
+Status: done
 
 ### S-023 Play HDR video with correct picture
 As the user, I open an HLG or PQ clip and it shows with sensible color.
@@ -200,7 +200,7 @@ As the user, I open an animated GIF and step through its frames.
 Depends: S-022
 Acceptance:
 - [self] GIF opens and steps frame by frame.
-Status: todo
+Status: done
 
 ## M6 Polish
 
@@ -210,7 +210,7 @@ Screens: settings-folders, settings-saves
 Acceptance:
 - [snap] Settings tabs "Folders" and "Saves".
 - [unit] Settings survive a restart; counters never go backward.
-Status: todo
+Status: done
 
 ### S-026 Menu commands and shortcuts
 As the user, I can do every action from the menu bar with its shortcut shown.
@@ -229,6 +229,11 @@ Status: todo
 - Electron shell, asar packing, single-instance lock: a native app does not need them.
 - Bundled GPL ffmpeg build: ffmpeg is optional and read from Homebrew; no redistribution.
 - Backup of app.asar versions: git replaces it.
+
+## Known gaps
+- MP4 export has no audio (the old app kept it). Needs reversal and time-stretch for ping-pong and slow speeds.
+- S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
+- S-002, S-011..S-014, S-026, S-027 not verified or only partly built (Open With, Dock drop, icon).
 
 ## Later
 - Per-folder recents, frame-by-frame annotation, audio export.

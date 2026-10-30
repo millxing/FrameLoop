@@ -161,6 +161,102 @@ enum SelfTest {
         let after = (try? FileManager.default.contentsOfDirectory(atPath: AppSettings.shared.exportDirectory))?.count ?? 0
         check("S-018 cancelling an export leaves no partial file", after == before, "\(before) -> \(after)")
         check("S-018 the job is cleared", model.job == nil)
+
+        try await editChecks(model: model, sample: sample)
+        try await compatibilityChecks(model: model, sample: sample)
+    }
+
+    private static func editChecks(model: PlayerModel, sample: URL) async throws {
+        let short = sample.deletingLastPathComponent().appending(path: "short-clip.mp4")
+        await model.open(sample)
+        let before = try FileManager.default.attributesOfItem(atPath: sample.path)
+
+        // S-019 delete
+        model.setSegmentStart(frame: 10)
+        model.setSegmentEnd(frame: 29)
+        check("S-019 delete is enabled with a segment", model.canDelete)
+        await model.deleteSelection()
+        let frames = model.video?.frames ?? []
+        check("S-019 deleting 20 frames leaves 70", frames.count == 70, "\(frames.count)")
+        let gaps = zip(frames, frames.dropFirst()).map { $1.pts - $0.pts }
+        check("S-019 the cut leaves no gap or jump", gaps.allSatisfy { abs($0 - 1.0 / 30) < 0.002 }, "\(gaps.min() ?? 0)...\(gaps.max() ?? 0)")
+        let after = try FileManager.default.attributesOfItem(atPath: sample.path)
+        check("S-019 the original file is untouched", (before[.size] as? Int) == (after[.size] as? Int) && (before[.modificationDate] as? Date) == (after[.modificationDate] as? Date))
+        let playerDuration = (try await model.player.currentItem?.asset.load(.duration))?.seconds ?? 0
+        check("S-019 the player plays the shortened clip", abs(playerDuration - 70.0 / 30) < 0.1, "\(playerDuration)")
+        check("S-019 the segment is cleared after a cut", model.segment == nil)
+
+        // S-021 undo
+        check("S-021 undo is enabled after an edit", model.canUndo)
+        model.undoEdit()
+        check("S-021 undo restores all 90 frames", model.video?.frames.count == 90, "\(model.video?.frames.count ?? -1)")
+        check("S-021 undo is disabled with nothing to undo", !model.canUndo)
+
+        // S-019 delete a segment that wraps around the end of the clip
+        model.setSegmentStart(frame: 80)
+        model.setSegmentEnd(frame: 5)
+        await model.deleteSelection()
+        check("S-019 a wrapped segment removes both ends", model.video?.frames.count == 74, "\(model.video?.frames.count ?? -1)")
+        model.undoEdit()
+
+        // S-020 append a clip of another size and frame rate
+        await model.append(short)
+        check("S-020 appending adds the frames", model.video?.frames.count == 138, "\(model.video?.frames.count ?? -1)")
+        check("S-020 the picture size stays the first clip's", model.video?.width == 640 && model.video?.height == 360, "\(model.video?.width ?? 0)x\(model.video?.height ?? 0)")
+        model.seek(toFrame: 89)
+        model.step(by: 1)
+        try await Task.sleep(for: .seconds(0.4))
+        check("S-020 stepping crosses the join", model.currentFrame == 90 && Timeline.frameAtTime(model.video!.frames, time: model.player.currentTime().seconds) == 90)
+        model.segment = nil
+        model.export(.mp4)
+        await model.waitForJob()
+        if let url = model.toast?.url {
+            let asset = AVURLAsset(url: url)
+            let duration = try await asset.load(.duration).seconds
+            check("S-020 the joined clip exports in full", abs(duration - 5.0) < 0.2, "\(duration)")
+        } else { check("S-020 the joined clip exports", false, model.message ?? "no file") }
+        model.toast = nil
+        model.undoEdit()
+        check("S-021 undo removes the appended clip", model.video?.frames.count == 90)
+    }
+
+    private static func compatibilityChecks(model: PlayerModel, sample: URL) async throws {
+        guard let ffmpeg = FFmpeg.tool("ffmpeg") else {
+            print("SKIP S-022 ffmpeg is not installed")
+            return
+        }
+        let folder = sample.deletingLastPathComponent()
+        func make(_ name: String, _ args: [String]) -> URL {
+            let output = folder.appending(path: name)
+            let process = Process()
+            process.executableURL = ffmpeg
+            process.arguments = ["-y", "-v", "error", "-i", sample.path] + args + [output.path]
+            try? process.run()
+            process.waitUntilExit()
+            return output
+        }
+        let mkv = make("clip.mkv", ["-c", "copy"])
+        let avi = make("clip.avi", ["-c:v", "mpeg4", "-q:v", "2"])
+        let gif = make("clip.gif", ["-vf", "fps=15,scale=320:-1"])
+
+        let start = Date()
+        await model.open(mkv)
+        check("S-022 an MKV opens by remuxing", model.video?.frames.count == 90, "\(model.video?.frames.count ?? -1) \(model.message ?? "")")
+        check("S-022 the remux is quick", Date().timeIntervalSince(start) < 8, "\(Date().timeIntervalSince(start)) s")
+        check("S-022 the title still names the MKV", model.video?.url.lastPathComponent == "clip.mkv")
+        model.step(by: 5)
+        try await Task.sleep(for: .seconds(0.3))
+        check("S-022 frame stepping works on the copy", model.currentFrame == 5)
+
+        await model.open(avi)
+        check("S-022 an AVI opens by transcoding", model.video?.frames.count == 90, "\(model.video?.frames.count ?? -1) \(model.message ?? "")")
+
+        await model.open(gif)
+        check("S-024 a GIF opens and has its frames", (model.video?.frames.count ?? 0) >= 40, "\(model.video?.frames.count ?? -1) \(model.message ?? "")")
+
+        await model.open(sample)
+        let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: FFmpeg.directory.path))?.count ?? 0
+        check("S-022 temporary copies are deleted when the video is replaced", leftovers == 0, "\(leftovers) left")
     }
 
     private static func waitForToast(_ model: PlayerModel) async throws {

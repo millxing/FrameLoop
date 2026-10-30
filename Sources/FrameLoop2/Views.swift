@@ -134,6 +134,19 @@ struct PlayerToolbar: ToolbarContent {
                 .help("Flip the picture (M)")
         }
         ToolbarItemGroup {
+            Button("Delete Selection", systemImage: "trash") { Task { await model.deleteSelection() } }
+                .disabled(!model.canDelete)
+                .help("Cut the segment out of the clip (Delete)")
+            Button("Append Video", systemImage: "plus.rectangle.on.rectangle") {
+                if let url = Panels.chooseVideo() { Task { await model.append(url) } }
+            }
+            .disabled(!model.canAppend)
+            .help("Add a video to the end (Shift-Command-O)")
+            Button("Undo", systemImage: "arrow.uturn.backward") { model.undoEdit() }
+                .disabled(!model.canUndo)
+                .help("Undo last append or delete (Command-Z)")
+        }
+        ToolbarItemGroup {
             Button("Screenshot", systemImage: "camera") { model.saveScreenshot() }
                 .disabled(!model.canExport)
                 .help("Save the current frame as a PNG (S)")
