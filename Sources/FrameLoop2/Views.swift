@@ -75,7 +75,7 @@ struct PlayerWindow: View {
         .toolbar { PlayerToolbar(model: model) }
         .focusedSceneValue(\.player, model)
         .noInitialFocus()
-        .frame(minWidth: 840, minHeight: 520)
+        .frame(minHeight: 520)
         .task {
             if let url = request?.url { await model.open(url) }
             await library.refresh()
@@ -113,7 +113,7 @@ struct PlayerToolbar: ToolbarContent {
             Button("Open Video", systemImage: "folder") {
                 if let url = Panels.chooseVideo() { Task { await model.open(url) } }
             }
-            .help("Open a video (Command-O)")
+            .tip("Open a video (Command-O)")
         }
         ToolbarItemGroup {
             Menu {
@@ -124,37 +124,37 @@ struct PlayerToolbar: ToolbarContent {
             } label: {
                 Label(PlaybackSpeed.label(model.speed), systemImage: "speedometer")
             }
-            .help("Playback and export speed (Control-1 to 7)")
+            .tip("Playback and export speed (Control-1 to 7)")
             Toggle(isOn: $model.loopEnabled) { Label("Loop", systemImage: "repeat") }
-                .help("Loop the segment (L)")
+                .tip("Loop the segment (L)")
             Toggle(isOn: $model.pingPong) { Label("Reverse Loop", systemImage: "arrow.left.arrow.right") }
-                .help("Play the loop forward, then backward (R)")
+                .tip("Play the loop forward, then backward (R)")
             Toggle(isOn: $model.mirrored) { Label("Mirror", systemImage: "arrow.trianglehead.left.and.right.righttriangle.left.righttriangle.right") }
-                .help("Flip the picture left to right (M)")
+                .tip("Flip the picture left to right (M)")
         }
         ToolbarItemGroup {
             Toggle(isOn: $model.showInfo) { Label("Video Info", systemImage: "info.circle") }
-                .help("Show the picture size and frame rate (Option-Command-I)")
+                .tip("Show the picture size and frame rate (Option-Command-I)")
             Toggle(isOn: $model.showAdjustments) { Label("Adjustments", systemImage: "slider.horizontal.3") }
-                .help("Brightness, contrast, saturation, and more (Option-Command-A)")
+                .tip("Brightness, contrast, saturation, and more (Option-Command-A)")
         }
         ToolbarItemGroup {
             Button("Delete Selection", systemImage: "trash") { Task { await model.deleteSelection() } }
                 .disabled(!model.canDelete)
-                .help("Cut the segment out of the clip (Delete)")
+                .tip("Cut the segment out of the clip (Delete)")
             Button("Append Video", systemImage: "plus.rectangle.on.rectangle") {
                 if let url = Panels.chooseVideo() { Task { await model.append(url) } }
             }
             .disabled(!model.canAppend)
-            .help("Add a video to the end (Shift-Command-O)")
+            .tip("Add a video to the end (Shift-Command-O)")
             Button("Undo", systemImage: "arrow.uturn.backward") { model.undoEdit() }
                 .disabled(!model.canUndo)
-                .help("Undo last append or delete (Command-Z)")
+                .tip("Undo last append or delete (Command-Z)")
         }
         ToolbarItemGroup {
             Button("Screenshot", systemImage: "camera") { model.saveScreenshot() }
                 .disabled(!model.canExport)
-                .help("Save the current frame as a PNG (S)")
+                .tip("Save the current frame as a PNG (S)")
             Menu {
                 ForEach(ExportFormat.allCases, id: \.self) { format in
                     Button(format.title) { model.export(format) }
@@ -165,7 +165,7 @@ struct PlayerToolbar: ToolbarContent {
                 model.export(.mp4Original)
             }
             .disabled(!model.canExport)
-            .help("Export the segment as an MP4 at the original size (Command-E). Use the arrow for other formats.")
+            .tip("Export the segment as an MP4 at the original size (Command-E). Use the arrow for other formats.")
         }
     }
 }
@@ -198,11 +198,11 @@ struct SidebarView: View {
                     ForEach(settings.folderSlots) { Text($0.label).tag($0.id) }
                 }
                 .labelsHidden()
-                .help("Choose which folder to list")
+                .tip("Choose which folder to list")
                 Button("Refresh", systemImage: "arrow.clockwise") { Task { await library.refresh() } }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)
-                    .help("Refresh the list")
+                    .tip("Refresh the list")
             }
             .padding(.horizontal, Space.md)
             .padding(.vertical, Space.sm)
@@ -237,7 +237,7 @@ struct PlayerScreen: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if model.video != nil { Controls(model: model) }
         }
@@ -306,7 +306,7 @@ struct AdjustmentsPanel: View {
             Section {
                 Button("Reset All") { model.adjustments = Adjustments() }
                     .disabled(model.adjustments.isNeutral)
-                    .help("Put every control back to its neutral setting")
+                    .tip("Put every control back to its neutral setting")
             }
         }
         .formStyle(.grouped)
@@ -325,7 +325,7 @@ struct AdjustmentsPanel: View {
             }
             Slider(value: value, in: range)
                 .accessibilityLabel(title)
-                .help("\(title). Double-click its name to reset.")
+                .tip("\(title). Double-click its name to reset.")
         }
     }
 }
@@ -446,25 +446,42 @@ struct Controls: View {
     var body: some View {
         VStack(spacing: Space.sm) {
             TimelineBar(model: model)
-            HStack(spacing: Space.md) {
-                readout
-                Spacer(minLength: Space.md)
-                transport
-                Spacer(minLength: Space.md)
-                HStack(spacing: Space.sm) {
-                    Image(systemName: model.volume == 0 ? "speaker.slash" : "speaker.wave.2").foregroundStyle(.secondary)
-                        .help("Volume")
-                    Slider(value: $model.volume, in: 0...1).frame(width: 96)
-                        .accessibilityLabel("Volume")
-                        .help("Volume")
+            // Wide: everything on one row. Narrow (an open side panel): the transport gets a row of its own.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Space.md) {
+                    readout
+                    Spacer(minLength: Space.md)
+                    transport
+                    Spacer(minLength: Space.md)
+                    volume
+                }
+                VStack(spacing: Space.sm) {
+                    HStack(spacing: Space.md) {
+                        readout
+                        Spacer(minLength: Space.md)
+                        volume
+                    }
+                    transport
                 }
             }
+            // The wide row's width must not become the window's minimum, or a side panel pushes past the edge.
+            .frame(minWidth: 0)
         }
         .padding(.horizontal, Space.lg)
         .padding(.vertical, Space.md)
         .glassEffect(.regular, in: .rect(cornerRadius: Space.lg))
         .padding(Space.md)
         .gridArea("controls", inset: Space.md)
+    }
+
+    private var volume: some View {
+        HStack(spacing: Space.sm) {
+            Image(systemName: model.volume == 0 ? "speaker.slash" : "speaker.wave.2").foregroundStyle(.secondary)
+                .tip("Volume")
+            Slider(value: $model.volume, in: 0...1).frame(width: 96)
+                .accessibilityLabel("Volume")
+                .tip("Volume")
+        }
     }
 
     private var readout: some View {
@@ -481,25 +498,25 @@ struct Controls: View {
     private var transport: some View {
         HStack(spacing: Space.sm) {
             Button("Back 10 seconds", systemImage: "gobackward.10") { model.skip(seconds: -10) }
-                .help("Back 10 seconds (Shift-Left Arrow)")
+                .tip("Back 10 seconds (Shift-Left Arrow)")
             Button("Previous frame", systemImage: "backward.frame") { model.step(by: -1) }
-                .help("Previous frame (Left Arrow)")
+                .tip("Previous frame (Left Arrow)")
             Button(model.isPlaying ? "Pause" : "Play", systemImage: model.isPlaying ? "pause.fill" : "play.fill") { model.togglePlay() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .help(model.isPlaying ? "Pause (Space)" : "Play (Space)")
+                .tip(model.isPlaying ? "Pause (Space)" : "Play (Space)")
             Button("Next frame", systemImage: "forward.frame") { model.step(by: 1) }
-                .help("Next frame (Right Arrow)")
+                .tip("Next frame (Right Arrow)")
             Button("Forward 10 seconds", systemImage: "goforward.10") { model.skip(seconds: 10) }
-                .help("Forward 10 seconds (Shift-Right Arrow)")
+                .tip("Forward 10 seconds (Shift-Right Arrow)")
             Divider().frame(height: Space.lg)
             Button("Segment start", systemImage: "arrow.down.to.line.compact") { model.markStart() }
-                .help("Mark the segment start (I)")
+                .tip("Mark the segment start (I)")
             Button("Segment end", systemImage: "arrow.up.to.line.compact") { model.markEnd() }
-                .help("Mark the segment end (O)")
+                .tip("Mark the segment end (O)")
             Button("Reset selection", systemImage: "xmark.circle") { model.resetSegment() }
                 .disabled(model.segment == nil)
-                .help("Clear the segment")
+                .tip("Clear the segment")
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
@@ -559,7 +576,7 @@ struct TimelineBar: View {
             .frame(width: handleWidth, height: 20)
             .offset(x: position - handleWidth / 2) // grid: ok position follows the video time
             .accessibilityLabel(label)
-            .help("\(label): drag to move it")
+            .tip("\(label): drag to move it")
             .highPriorityGesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("timeline"))
                 .onChanged { drag in
                     let fraction = min(max(drag.location.x / max(1, width), 0), 1)

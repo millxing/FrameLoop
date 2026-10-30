@@ -274,6 +274,7 @@ Depends: S-001
 Screens: adjust
 Acceptance:
 - [self] Saturation 0 removes the colour in the player's frame; brightness changes screenshots.
+- [self] With the panel open, at the default and a narrow window, its sliders and the transport buttons stay inside the window.
 - [snap] The panel opens beside the video with five sliders, their values, and Reset All.
 Status: done
 
@@ -288,7 +289,8 @@ Status: done
 ### S-035 Tooltips on every icon
 As the user, I hover over any icon button and see what it does and its shortcut.
 Acceptance:
-- [manual] Every toolbar item, transport button, segment handle, and the volume control shows a tooltip.
+- [unit] Every toolbar item, transport button, and the volume control has a tooltip view; resting on one shows its label after half a second, and leaving hides it.
+- [manual] The label appears below the icon on screen.
 Status: done
 
 ## Dropped

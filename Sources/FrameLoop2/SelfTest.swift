@@ -163,9 +163,71 @@ enum SelfTest {
         check("S-018 the job is cleared", model.job == nil)
 
         try await lookChecks(model: model)
+        try await tipChecks()
+        try await panelFitChecks(model: model)
         try await audioChecks(model: model)
         try await editChecks(model: model, sample: sample)
         try await compatibilityChecks(model: model, sample: sample)
+    }
+
+    /// S-033 the Adjustments panel opens inside the window at the default and the smallest window size, and the controls still fit.
+    private static func panelFitChecks(model: PlayerModel) async throws {
+        func tips(in view: NSView) -> [TipView] {
+            (view as? TipView).map { [$0] } ?? [] + view.subviews.flatMap(tips)
+        }
+        guard let window = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isSheet }), let content = window.contentView else { return }
+        let original = window.frame
+        model.showAdjustments = true
+        for width in [1100.0, 960.0] {
+            window.setFrame(NSRect(x: original.minX, y: original.minY, width: width, height: 720), display: true)
+            try await Task.sleep(for: .seconds(0.8))
+            let bounds = content.bounds
+            func inside(_ prefix: String) -> (Bool, String) {
+                guard let view = tips(in: content).first(where: { $0.text.hasPrefix(prefix) }) else { return (false, "not found") }
+                let rect = view.convert(view.bounds, to: content)
+                return (rect.minX >= -0.5 && rect.maxX <= bounds.maxX + 0.5 && rect.width > 8, "\(rect) in \(bounds)")
+            }
+            for name in ["Brightness.", "Hue.", "Back 10 seconds", "Forward 10 seconds", "Mark the segment start", "Clear the segment", "Volume"] {
+                let result = inside(name)
+                check("S-033 at \(Int(width)) pt wide with the panel open, \(name) fits in the window", result.0, result.1)
+            }
+        }
+        model.showAdjustments = false
+        window.setFrame(original, display: true)
+        try await Task.sleep(for: .seconds(0.4))
+    }
+
+    /// S-035 hovering a control shows its tooltip after a short rest, and leaving hides it.
+    private static func tipChecks() async throws {
+        func tips(in view: NSView) -> [TipView] {
+            (view as? TipView).map { [$0] } ?? [] + view.subviews.flatMap(tips)
+        }
+        guard let window = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isSheet }), let content = window.contentView else {
+            check("S-035 a window is open", false)
+            return
+        }
+        let all = tips(in: content)
+        let labels = Set(all.map(\.text))
+        for name in ["Previous frame (Left Arrow)", "Play (Space)", "Next frame (Right Arrow)", "Volume", "Refresh the list"] {
+            check("S-035 \(name) has a tooltip", labels.contains(name) || labels.contains(where: { $0.hasPrefix(name.prefix(5)) }))
+        }
+        // The toolbar sits above the content view, in the window's frame view.
+        let toolbarLabels = Set(tips(in: content.superview ?? content).map(\.text))
+        for name in ["Flip the picture left to right (M)", "Brightness, contrast, saturation, and more (Option-Command-A)", "Open a video (Command-O)"] {
+            check("S-035 the toolbar shows \"\(name.prefix(24))…\"", toolbarLabels.contains(name), "\(toolbarLabels.count) tips found")
+        }
+        guard let target = all.first(where: { $0.text.hasPrefix("Next frame") }) else {
+            check("S-035 the Next frame button can be found", false)
+            return
+        }
+        let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0,
+                                       windowNumber: window.windowNumber, context: nil, subtype: 0, data1: 0, data2: 0)!
+        target.mouseEntered(with: event)
+        check("S-035 the tooltip waits before it shows", !TipPanel.shared.isShowing)
+        try await Task.sleep(for: .seconds(0.8))
+        check("S-035 resting on a button shows its tooltip", TipPanel.shared.isShowing && TipPanel.shared.text == target.text, TipPanel.shared.text)
+        target.mouseExited(with: event)
+        check("S-035 leaving hides the tooltip", !TipPanel.shared.isShowing)
     }
 
     /// S-029 faster speeds, S-030 default loop, S-031 original-size MP4, S-032 mirror, S-033 adjustments.
