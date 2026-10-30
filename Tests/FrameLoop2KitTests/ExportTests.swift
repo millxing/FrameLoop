@@ -23,6 +23,19 @@ import Testing
     #expect(box.width % 2 == 0 && box.height % 2 == 0)
 }
 
+@Test func originalSizeKeepsThePictureAndStaysEven() {
+    #expect(ExportPlan.evenSize(width: 1921, height: 1081) == (1920, 1080))
+    #expect(ExportPlan.evenSize(width: 640, height: 360) == (640, 360))
+    #expect(ExportPlan.bitrate(width: 640, height: 360) == 8_000_000)
+    #expect(ExportPlan.bitrate(width: 1920, height: 1080) == 13_747_968)
+    #expect(ExportPlan.bitrate(width: 7680, height: 4320) == 55_000_000)
+}
+
+@Test func fasterSpeedsShortenTheOutput() {
+    let result = ExportPlan.outputFrames(order: [0, 1, 2, 3], durations: Array(repeating: 0.1, count: 4), speed: 2, fps: 10)
+    #expect(result == [0, 2])
+}
+
 @Test func gifNeverGrows() {
     #expect(ExportPlan.gifSize(sourceWidth: 1920, sourceHeight: 1080, maxWidth: 640) == (640, 360))
     #expect(ExportPlan.gifSize(sourceWidth: 320, sourceHeight: 240, maxWidth: 640) == (320, 240))

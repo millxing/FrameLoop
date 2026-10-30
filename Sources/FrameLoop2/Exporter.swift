@@ -4,14 +4,37 @@ import FrameLoop2Kit
 import ImageIO
 import UniformTypeIdentifiers
 
-nonisolated enum ExportFormat: Sendable {
-    case mp4, gif
+nonisolated enum ExportFormat: Sendable, CaseIterable {
+    /// The default: the clip's own size and frame rate.
+    case mp4Original
+    case mp4Small
+    case gif
 
     var title: String {
         switch self {
-        case .mp4: "Export MP4 H.264 · 24 FPS · 768×512 (letterboxed)"
+        case .mp4Original: "Export MP4 H.264 · original size and frame rate"
+        case .mp4Small: "Export MP4 H.264 · 24 FPS · 768×512 (letterboxed)"
         case .gif: "Export animated GIF · 15 FPS · max 640 px wide"
         }
+    }
+
+    var jobTitle: String { self == .gif ? "Exporting GIF…" : "Exporting video…" }
+}
+
+/// Size, frame rate, and bit rate of one MP4 export.
+nonisolated struct MP4Target: Sendable {
+    var width: Int
+    var height: Int
+    var fps: Double
+    var bitrate: Int
+
+    static let small = MP4Target(width: 768, height: 512, fps: 24, bitrate: 8_000_000)
+
+    /// The clip's own picture size and measured frame rate.
+    static func original(of video: LoadedVideo) -> MP4Target {
+        let size = ExportPlan.evenSize(width: video.width, height: video.height)
+        return MP4Target(width: size.width, height: size.height, fps: max(1, video.frameRate),
+                         bitrate: ExportPlan.bitrate(width: size.width, height: size.height))
     }
 }
 
@@ -29,8 +52,6 @@ nonisolated enum ExportError: LocalizedError {
 
 /// Stills, MP4s, and GIFs, all from one pipeline: pick source frames, draw them, write them.
 nonisolated enum Exporter {
-    static let mp4Size = (width: 768, height: 512)
-    static let mp4FPS = 24.0
     static let gifFPS = 15.0
     static let gifMaxWidth = 640
     static let gifMaxFrames = 1_500
@@ -61,10 +82,10 @@ nonisolated enum Exporter {
     }
 
     @concurrent
-    static func screenshot(video: LoadedVideo, frame: Int, mirrored: Bool, to url: URL) async throws {
+    static func screenshot(video: LoadedVideo, frame: Int, mirrored: Bool, adjustments: Adjustments, to url: URL) async throws {
         let time = cmTime(video.frames[frame].seekTime)
         let image = try await generator(for: video).image(at: time).image
-        let final = mirrorIfNeeded(image, mirrored)
+        let final = mirrorIfNeeded(PictureAdjuster.apply(adjustments, to: image), mirrored)
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
         else { throw ExportError.writerFailed("cannot create \(url.lastPathComponent)") }
         CGImageDestinationAddImage(destination, final, nil)
@@ -72,11 +93,13 @@ nonisolated enum Exporter {
     }
 
     @concurrent
-    static func exportMP4(video: LoadedVideo, order: [Int], speed: Double, mirrored: Bool, to url: URL,
+    static func exportMP4(video: LoadedVideo, order: [Int], speed: Double, mirrored: Bool, adjustments: Adjustments,
+                          target: MP4Target, to url: URL,
                           progress: @escaping @Sendable (Double) -> Void) async throws {
+        let fps = target.fps
         let outputFrames = ExportPlan.outputFrames(order: order, durations: video.frames.map(\.duration),
-                                                   speed: speed, fps: mp4FPS)
-        let (width, height) = mp4Size
+                                                   speed: speed, fps: fps)
+        let (width, height) = (target.width, target.height)
         let box = ExportPlan.letterbox(sourceWidth: video.width, sourceHeight: video.height,
                                        frameWidth: width, frameHeight: height)
         // Sound first: it is cut to the same frames, so a bad audio track fails before any video work.
@@ -88,9 +111,9 @@ nonisolated enum Exporter {
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 8_000_000,
+                AVVideoAverageBitRateKey: target.bitrate,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                AVVideoExpectedSourceFrameRateKey: Int(mp4FPS),
+                AVVideoExpectedSourceFrameRateKey: Int(fps.rounded()),
             ],
         ])
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
@@ -117,7 +140,7 @@ nonisolated enum Exporter {
             for (tick, source) in outputFrames.enumerated() {
                 try Task.checkCancellation()
                 if source != cachedIndex {
-                    cachedImage = try await images.image(at: cmTime(video.frames[source].seekTime)).image
+                    cachedImage = PictureAdjuster.apply(adjustments, to: try await images.image(at: cmTime(video.frames[source].seekTime)).image)
                     cachedIndex = source
                 }
                 guard let image = cachedImage, let pool = adaptor.pixelBufferPool else { continue }
@@ -144,7 +167,7 @@ nonisolated enum Exporter {
                 CVPixelBufferUnlockBaseAddress(buffer, [])
                 // The writer interleaves audio and video, so keep audio flowing a little ahead of the picture
                 // or the video input would wait on it forever.
-                var ahead = Double(tick) / mp4FPS + 0.5
+                var ahead = Double(tick) / fps + 0.5
                 audio?.feed(audioInput, until: ahead)
                 while !input.isReadyForMoreMediaData {
                     try Task.checkCancellation()
@@ -153,7 +176,7 @@ nonisolated enum Exporter {
                     ahead += 0.25
                     audio?.feed(audioInput, until: ahead)
                 }
-                adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(tick), timescale: CMTimeScale(mp4FPS)))
+                adaptor.append(buffer, withPresentationTime: cmTime(Double(tick) / fps))
                 if tick % 6 == 0 { progress(Double(tick) / Double(outputFrames.count)) }
             }
             input.markAsFinished()
@@ -175,7 +198,7 @@ nonisolated enum Exporter {
     }
 
     @concurrent
-    static func exportGIF(video: LoadedVideo, order: [Int], speed: Double, mirrored: Bool, to url: URL,
+    static func exportGIF(video: LoadedVideo, order: [Int], speed: Double, mirrored: Bool, adjustments: Adjustments, to url: URL,
                           progress: @escaping @Sendable (Double) -> Void) async throws {
         let outputFrames = ExportPlan.outputFrames(order: order, durations: video.frames.map(\.duration),
                                                    speed: speed, fps: gifFPS)
@@ -198,7 +221,7 @@ nonisolated enum Exporter {
                 try Task.checkCancellation()
                 if source != cachedIndex {
                     let image = try await images.image(at: cmTime(video.frames[source].seekTime)).image
-                    cachedImage = mirrorIfNeeded(image, mirrored)
+                    cachedImage = mirrorIfNeeded(PictureAdjuster.apply(adjustments, to: image), mirrored)
                     cachedIndex = source
                 }
                 if let image = cachedImage { CGImageDestinationAddImage(destination, image, frameProperties) }

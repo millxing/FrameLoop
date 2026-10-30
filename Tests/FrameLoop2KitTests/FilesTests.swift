@@ -19,5 +19,6 @@ import Testing
     #expect(MediaFormats.isNative(URL(fileURLWithPath: "/a/b.MP4")))
     #expect(!MediaFormats.isNative(URL(fileURLWithPath: "/a/b.mkv")))
     #expect(MediaFormats.isSupported(URL(fileURLWithPath: "/a/b.gif")))
-    #expect(PlaybackSpeed.all == [1, 0.75, 0.5, 0.25])
+    #expect(PlaybackSpeed.all == [2, 1.5, 1.25, 1, 0.75, 0.5, 0.25])
+    #expect(PlaybackSpeed.label(1.25) == "1.25×" && PlaybackSpeed.label(1) == "1×")
 }

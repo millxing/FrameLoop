@@ -67,10 +67,11 @@ Acceptance:
 Status: done
 
 ### S-008 Change playback speed
-As the user, I pick 1x, 0.75x, 0.5x or 0.25x and playback, loops, and exports use it.
+As the user, I pick 2×, 1.5×, 1.25×, 1×, 0.75×, 0.5× or 0.25× and playback, loops, and exports use it.
 Depends: S-002
 Acceptance:
-- [unit] Speed list is exactly 1, 0.75, 0.5, 0.25.
+- [unit] Speed list is exactly 2, 1.5, 1.25, 1, 0.75, 0.5, 0.25.
+- [self] At 2× playback covers about twice the frames, and a 2× export is half as long.
 - [self] Pitch stays natural at reduced speed.
 Status: done
 
@@ -130,8 +131,8 @@ Acceptance:
 - [snap] A toast confirms the saved file name.
 Status: done
 
-### S-016 Export the segment as MP4
-As the user, I choose "Export MP4 H.264, 24 FPS, 768x512 (letterboxed)" and get `loopNNNNNNNN.mp4` of the segment, honoring speed, mirror, and ping-pong.
+### S-016 Export the segment as MP4 (768×512)
+As the user, I choose "Export MP4 H.264, 24 FPS, 768x512 (letterboxed)" from the export menu and get `loopNNNNNNNN.mp4` of the segment, honoring speed, mirror, and ping-pong.
 Depends: S-007, S-008, S-009
 Screens: export-progress
 Acceptance:
@@ -235,6 +236,61 @@ Acceptance:
 - [snap] Folder with no videos shows "No supported videos".
 Status: todo
 
+## M7 Viewing and export options
+
+### S-029 Faster playback speeds
+As the user, I pick 1.25×, 1.5×, or 2× from the Speed menu (or Control-1 to 7) and the clip plays and exports faster.
+Depends: S-008
+Acceptance:
+- [unit] Speeds list has 2, 1.5, 1.25 above 1; a 2× plan shows every other frame.
+- [self] 2× playback covers about twice the frames; a 2× export is half as long.
+Status: done
+
+### S-030 Loop is on by default
+As the user, I open a video and it loops without my turning Loop on.
+Depends: S-006
+Acceptance:
+- [self] A new player has looping on.
+Status: done
+
+### S-031 Export an MP4 at the original size
+As the user, I click Export, or press Command-E, and get an MP4 at the clip's own size and frame rate. The arrow next to Export offers the 768×512 MP4 and the GIF.
+Depends: S-016
+Acceptance:
+- [unit] The size is the source size rounded to even; the bit rate grows with the pixel count, within 8 to 55 Mbit/s.
+- [self] A 640×360 30 fps clip exports as 640×360 at 30 fps, with the speed and mirror applied.
+Status: done
+
+### S-032 Mirror flips the picture left to right
+As the user, I turn on Mirror (M) and the picture turns around its vertical centre line: left becomes right and it stays the right way up, in the player, screenshots, and exports.
+Depends: S-009
+Acceptance:
+- [self] The player's frame has the square on the right when mirrored, same size; turning Mirror off clears it.
+Status: done
+
+### S-033 Adjust brightness, contrast, saturation, exposure, and hue
+As the user, I open the Adjustments panel from the toolbar (Option-Command-A), move the sliders, and see the picture change. Screenshots and exports match. Reset All puts every slider back.
+Depends: S-001
+Screens: adjust
+Acceptance:
+- [self] Saturation 0 removes the colour in the player's frame; brightness changes screenshots.
+- [snap] The panel opens beside the video with five sliders, their values, and Reset All.
+Status: done
+
+### S-034 Show the picture size and frame rate
+As the user, I turn on Video Info (Option-Command-I) and the size and frame rate show over the corner of the video. It stays off until I turn it on, and the choice is kept.
+Depends: S-001
+Screens: info
+Acceptance:
+- [snap] A dark capsule at the top left reads "640×360 · 30 fps".
+Status: done
+
+### S-035 Tooltips on every icon
+As the user, I hover over any icon button and see what it does and its shortcut.
+Acceptance:
+- [manual] Every toolbar item, transport button, segment handle, and the volume control shows a tooltip.
+Status: done
+
 ## Dropped
 - Electron shell, asar packing, single-instance lock: a native app does not need them.
 - Bundled GPL ffmpeg build: ffmpeg is optional and read from Homebrew; no redistribution.
@@ -242,6 +298,7 @@ Status: todo
 
 ## Known gaps
 - S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
+- S-029..S-033: the player's picture was checked through AVFoundation frames; the live window was not viewed (no Screen Recording permission).
 - S-002, S-011..S-014, S-026, S-027 not verified or only partly built (Open With, Dock drop, icon).
 
 ## Later

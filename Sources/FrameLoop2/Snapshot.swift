@@ -1,4 +1,5 @@
 import AppKit
+import FrameLoop2Kit
 import IOKit.pwr_mgt
 import SwiftUI
 
@@ -51,6 +52,28 @@ enum Snapshot {
                     try? await Task.sleep(for: .seconds(0.8))
                     capture(to: "\(dir)/loaded-\(mode).png")
                 }
+                if wanted("mirror") {
+                    model.mirrored = true
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/mirror-\(mode).png")
+                    model.mirrored = false
+                }
+                if wanted("info") {
+                    model.showInfo = true
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/info-\(mode).png")
+                    model.showInfo = false
+                }
+                if wanted("adjust") {
+                    model.adjustments.brightness = 0.15
+                    model.adjustments.saturation = 1.5
+                    model.showAdjustments = true
+                    try? await Task.sleep(for: .seconds(1))
+                    capture(to: "\(dir)/adjust-\(mode).png")
+                    model.showAdjustments = false
+                    model.adjustments = Adjustments()
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
                 model.setSegmentStart(frame: 20)
                 model.setSegmentEnd(frame: 62)
                 model.loopEnabled = true
@@ -65,7 +88,6 @@ enum Snapshot {
                     model.clearJob()
                     try? await Task.sleep(for: .seconds(0.5))
                 }
-                model.loopEnabled = false
             }
             if only == nil || only?.contains("settings") == true {
                 let main = NSApp.windows.first { $0.canBecomeMain && !$0.isSheet }

@@ -26,9 +26,15 @@ final class PlayerModel {
     private(set) var job: Job?
     var volume: Float = 1 { didSet { player.volume = volume } }
     var speed = 1.0 { didSet { if isPlaying { applyRate() } } }
-    var mirrored = false
+    var mirrored = false { didSet { refreshLook() } }
+    var adjustments = Adjustments() { didSet { refreshLook() } }
+    var showAdjustments = false
+    /// Shows the picture size and frame rate over the video. Remembered between launches.
+    var showInfo = Store.isOverridden ? false : UserDefaults.standard.bool(forKey: "showVideoInfo") {
+        didSet { if !Store.isOverridden { UserDefaults.standard.set(showInfo, forKey: "showVideoInfo") } }
+    }
     var segment: Segment?
-    var loopEnabled = false
+    var loopEnabled = true
     var pingPong = false
     var message: String?
     var toast: Toast?
@@ -40,6 +46,7 @@ final class PlayerModel {
     @ObservationIgnored private var reverseTask: Task<Void, Never>?
     @ObservationIgnored private var exportTask: Task<Void, Never>?
     @ObservationIgnored private var loadTask: Task<LoadedVideo, Error>?
+    @ObservationIgnored private var lookTask: Task<Void, Never>?
     @ObservationIgnored private var undoStack: [LoadedVideo] = []
 
     init() {
@@ -123,7 +130,29 @@ final class PlayerModel {
         video = loaded
         segment = nil
         direction = .forward
+        refreshLook()
         seek(toFrame: 0)
+    }
+
+    /// True when the picture's mirror and adjustments cannot go through the player's own filter pass,
+    /// because appended clips of different sizes already use a custom composition. The view draws them instead.
+    var lookInView: Bool { video?.videoComposition != nil }
+
+    /// Gives the player item the composition that mirrors and adjusts the picture.
+    private func refreshLook() {
+        lookTask?.cancel()
+        guard let video, let item = player.currentItem, video.videoComposition == nil else { return }
+        guard mirrored || !adjustments.isNeutral else {
+            item.videoComposition = nil
+            return
+        }
+        let asset = video.asset
+        let (mirrored, adjustments) = (mirrored, adjustments)
+        lookTask = Task {
+            guard let composition = try? await PictureAdjuster.composition(for: asset, adjustments: adjustments, mirrored: mirrored),
+                  !Task.isCancelled, player.currentItem === item else { return }
+            item.videoComposition = composition
+        }
     }
 
     /// Unloads the video and shows the empty window again.
@@ -403,10 +432,11 @@ final class PlayerModel {
         guard let video, job == nil else { return }
         let frame = currentFrame
         let mirrored = mirrored
+        let adjustments = adjustments
         Task {
             do {
                 let url = try AppSettings.shared.allocate(.screenshot)
-                try await Exporter.screenshot(video: video, frame: frame, mirrored: mirrored, to: url)
+                try await Exporter.screenshot(video: video, frame: frame, mirrored: mirrored, adjustments: adjustments, to: url)
                 toast = Toast(text: "Saved \(url.lastPathComponent)", url: url)
             } catch {
                 message = error.localizedDescription
@@ -430,7 +460,8 @@ final class PlayerModel {
         let order = exportOrder()
         let speed = speed
         let mirrored = mirrored
-        job = Job(title: format == .mp4 ? "Exporting video…" : "Exporting GIF…", fraction: 0)
+        let adjustments = adjustments
+        job = Job(title: format.jobTitle, fraction: 0)
         exportTask = Task {
             defer {
                 job = nil
@@ -438,14 +469,20 @@ final class PlayerModel {
             }
             var output: URL?
             do {
-                let url = try AppSettings.shared.allocate(format == .mp4 ? .mp4 : .gif)
+                let url = try AppSettings.shared.allocate(format == .gif ? .gif : .mp4)
                 output = url
                 let report: @Sendable (Double) -> Void = { [self] fraction in
                     Task { @MainActor in job?.fraction = fraction }
                 }
                 switch format {
-                case .mp4: try await Exporter.exportMP4(video: video, order: order, speed: speed, mirrored: mirrored, to: url, progress: report)
-                case .gif: try await Exporter.exportGIF(video: video, order: order, speed: speed, mirrored: mirrored, to: url, progress: report)
+                case .mp4Original:
+                    try await Exporter.exportMP4(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments,
+                                                 target: .original(of: video), to: url, progress: report)
+                case .mp4Small:
+                    try await Exporter.exportMP4(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments,
+                                                 target: .small, to: url, progress: report)
+                case .gif:
+                    try await Exporter.exportGIF(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments, to: url, progress: report)
                 }
                 toast = Toast(text: "Saved \(url.lastPathComponent)", url: url)
             } catch is CancellationError {

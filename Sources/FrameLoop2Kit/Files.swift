@@ -1,7 +1,7 @@
 import Foundation
 
 public enum PlaybackSpeed {
-    public static let all: [Double] = [1, 0.75, 0.5, 0.25]
+    public static let all: [Double] = [2, 1.5, 1.25, 1, 0.75, 0.5, 0.25]
 
     public static func label(_ speed: Double) -> String {
         speed == 1 ? "1×" : String(format: "%g×", speed)

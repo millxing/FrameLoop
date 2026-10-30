@@ -72,6 +72,16 @@ public enum ExportPlan {
         return Letterbox(x: (frameWidth - width) / 2, y: (frameHeight - height) / 2, width: width, height: height)
     }
 
+    /// The source picture size rounded down to even numbers, as H.264 needs.
+    public static func evenSize(width: Int, height: Int) -> (width: Int, height: Int) {
+        (max(2, width / 2 * 2), max(2, height / 2 * 2))
+    }
+
+    /// Bits per second for an export that keeps the source size: more pixels get more bits, within 8 to 55 Mbit/s.
+    public static func bitrate(width: Int, height: Int) -> Int {
+        max(8_000_000, min(55_000_000, Int((Double(width) * Double(height) * 6.63).rounded())))
+    }
+
     /// GIFs keep their aspect ratio and never grow past `maxWidth`.
     public static func gifSize(sourceWidth: Int, sourceHeight: Int, maxWidth: Int) -> (width: Int, height: Int) {
         guard sourceWidth > 0, sourceHeight > 0 else { return (maxWidth, maxWidth) }

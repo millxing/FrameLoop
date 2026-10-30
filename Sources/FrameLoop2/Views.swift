@@ -72,7 +72,6 @@ struct PlayerWindow: View {
             PlayerScreen(model: model)
         }
         .navigationTitle(model.video?.url.lastPathComponent ?? "FrameLoop2")
-        .navigationSubtitle(model.video?.summary ?? "")
         .toolbar { PlayerToolbar(model: model) }
         .focusedSceneValue(\.player, model)
         .noInitialFocus()
@@ -125,13 +124,19 @@ struct PlayerToolbar: ToolbarContent {
             } label: {
                 Label(PlaybackSpeed.label(model.speed), systemImage: "speedometer")
             }
-            .help("Loop playback and export speed")
+            .help("Playback and export speed (Control-1 to 7)")
             Toggle(isOn: $model.loopEnabled) { Label("Loop", systemImage: "repeat") }
                 .help("Loop the segment (L)")
             Toggle(isOn: $model.pingPong) { Label("Reverse Loop", systemImage: "arrow.left.arrow.right") }
                 .help("Play the loop forward, then backward (R)")
             Toggle(isOn: $model.mirrored) { Label("Mirror", systemImage: "arrow.trianglehead.left.and.right.righttriangle.left.righttriangle.right") }
-                .help("Flip the picture (M)")
+                .help("Flip the picture left to right (M)")
+        }
+        ToolbarItemGroup {
+            Toggle(isOn: $model.showInfo) { Label("Video Info", systemImage: "info.circle") }
+                .help("Show the picture size and frame rate (Option-Command-I)")
+            Toggle(isOn: $model.showAdjustments) { Label("Adjustments", systemImage: "slider.horizontal.3") }
+                .help("Brightness, contrast, saturation, and more (Option-Command-A)")
         }
         ToolbarItemGroup {
             Button("Delete Selection", systemImage: "trash") { Task { await model.deleteSelection() } }
@@ -151,13 +156,16 @@ struct PlayerToolbar: ToolbarContent {
                 .disabled(!model.canExport)
                 .help("Save the current frame as a PNG (S)")
             Menu {
-                Button(ExportFormat.mp4.title) { model.export(.mp4) }
-                Button(ExportFormat.gif.title) { model.export(.gif) }
+                ForEach(ExportFormat.allCases, id: \.self) { format in
+                    Button(format.title) { model.export(format) }
+                }
             } label: {
                 Label("Export Segment", systemImage: "square.and.arrow.up")
+            } primaryAction: {
+                model.export(.mp4Original)
             }
             .disabled(!model.canExport)
-            .help("Export the segment")
+            .help("Export the segment as an MP4 at the original size (Command-E). Use the arrow for other formats.")
         }
     }
 }
@@ -190,6 +198,7 @@ struct SidebarView: View {
                     ForEach(settings.folderSlots) { Text($0.label).tag($0.id) }
                 }
                 .labelsHidden()
+                .help("Choose which folder to list")
                 Button("Refresh", systemImage: "arrow.clockwise") { Task { await library.refresh() } }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)
@@ -210,7 +219,9 @@ struct PlayerScreen: View {
         ZStack {
             if model.video != nil {
                 Color.black
-                PlayerSurface(player: model.player, mirrored: model.mirrored)
+                PlayerSurface(player: model.player,
+                              mirrored: model.lookInView && model.mirrored,
+                              adjustments: model.lookInView ? model.adjustments : Adjustments())
             } else if model.isLoading {
                 ProgressView("Preparing media…")
             } else {
@@ -229,6 +240,9 @@ struct PlayerScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if model.video != nil { Controls(model: model) }
+        }
+        .overlay(alignment: .topLeading) {
+            if model.showInfo, let video = model.video { VideoInfoBadge(video: video) }
         }
         .overlay(alignment: .top) {
             if let message = model.message { Banner(text: message) { model.message = nil } }
@@ -250,12 +264,76 @@ struct PlayerScreen: View {
         .sheet(isPresented: Binding(get: { model.job != nil }, set: { _ in })) {
             JobSheet(model: model)
         }
+        .inspector(isPresented: $model.showAdjustments) {
+            AdjustmentsPanel(model: model)
+                .inspectorColumnWidth(min: 240, ideal: 260, max: 320)
+        }
+    }
+}
+
+/// Picture size and frame rate, over the corner of the video.
+struct VideoInfoBadge: View {
+    let video: LoadedVideo
+
+    var body: some View {
+        Text(video.summary)
+            .font(.callout.monospacedDigit())
+            .foregroundStyle(.white) // text over user content sits on a dark scrim
+            .padding(.horizontal, Space.md)
+            .padding(.vertical, Space.xs)
+            .background(.black.opacity(0.6), in: .capsule)
+            .padding(Space.md)
+            .allowsHitTesting(false)
+            .accessibilityLabel("Video info: \(video.summary)")
+    }
+}
+
+/// Brightness, contrast, saturation, exposure, and hue. They change the picture you see, screenshots, and exports.
+struct AdjustmentsPanel: View {
+    @Bindable var model: PlayerModel
+
+    var body: some View {
+        Form {
+            Section {
+                row("Brightness", value: $model.adjustments.brightness, range: -1...1, neutral: 0, format: "%+.2f")
+                row("Contrast", value: $model.adjustments.contrast, range: 0...2, neutral: 1, format: "%.2f")
+                row("Saturation", value: $model.adjustments.saturation, range: 0...2, neutral: 1, format: "%.2f")
+                row("Exposure", value: $model.adjustments.exposure, range: -2...2, neutral: 0, format: "%+.1f EV")
+                row("Hue", value: $model.adjustments.hue, range: -180...180, neutral: 0, format: "%+.0f°")
+            } footer: {
+                Text("Applies to the picture, screenshots, and exports. The file is not changed. Double-click a slider's name to reset it.")
+            }
+            Section {
+                Button("Reset All") { model.adjustments = Adjustments() }
+                    .disabled(model.adjustments.isNeutral)
+                    .help("Put every control back to its neutral setting")
+            }
+        }
+        .formStyle(.grouped)
+        .noInitialFocus()
+    }
+
+    private func row(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, neutral: Double, format: String) -> some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack {
+                Text(title)
+                    .onTapGesture(count: 2) { value.wrappedValue = neutral }
+                Spacer()
+                Text(String(format: format, value.wrappedValue))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: range)
+                .accessibilityLabel(title)
+                .help("\(title). Double-click its name to reset.")
+        }
     }
 }
 
 struct PlayerSurface: NSViewRepresentable {
     let player: AVPlayer
     let mirrored: Bool
+    let adjustments: Adjustments
 
     func makeNSView(context: Context) -> LayerView {
         let view = LayerView()
@@ -264,21 +342,41 @@ struct PlayerSurface: NSViewRepresentable {
     }
 
     func updateNSView(_ view: LayerView, context: Context) {
-        view.playerLayer.setAffineTransform(mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity)
+        view.mirrored = mirrored
+        view.setFilters(PictureAdjuster.filters(adjustments))
     }
 
+    /// Only used when the player's composition is taken (appended clips of different sizes): the picture sits in its
+    /// own layer, and mirroring flips that layer around its vertical centre line.
     final class LayerView: NSView {
         let playerLayer = AVPlayerLayer()
+        var mirrored = false { didSet { if mirrored != oldValue { needsLayout = true } } }
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
+            layerUsesCoreImageFilters = true
+            layer?.backgroundColor = NSColor.black.cgColor
             playerLayer.videoGravity = .resizeAspect
             playerLayer.backgroundColor = NSColor.black.cgColor
-            layer = playerLayer
+            layer?.addSublayer(playerLayer)
         }
 
         required init?(coder: NSCoder) { fatalError() }
+
+        func setFilters(_ filters: [CIFilter]) {
+            playerLayer.filters = filters.isEmpty ? nil : filters
+        }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            playerLayer.bounds = CGRect(origin: .zero, size: bounds.size)
+            playerLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            playerLayer.setAffineTransform(mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity)
+            CATransaction.commit()
+        }
     }
 }
 
@@ -355,8 +453,10 @@ struct Controls: View {
                 Spacer(minLength: Space.md)
                 HStack(spacing: Space.sm) {
                     Image(systemName: model.volume == 0 ? "speaker.slash" : "speaker.wave.2").foregroundStyle(.secondary)
+                        .help("Volume")
                     Slider(value: $model.volume, in: 0...1).frame(width: 96)
                         .accessibilityLabel("Volume")
+                        .help("Volume")
                 }
             }
         }
@@ -381,12 +481,17 @@ struct Controls: View {
     private var transport: some View {
         HStack(spacing: Space.sm) {
             Button("Back 10 seconds", systemImage: "gobackward.10") { model.skip(seconds: -10) }
+                .help("Back 10 seconds (Shift-Left Arrow)")
             Button("Previous frame", systemImage: "backward.frame") { model.step(by: -1) }
+                .help("Previous frame (Left Arrow)")
             Button(model.isPlaying ? "Pause" : "Play", systemImage: model.isPlaying ? "pause.fill" : "play.fill") { model.togglePlay() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .help(model.isPlaying ? "Pause (Space)" : "Play (Space)")
             Button("Next frame", systemImage: "forward.frame") { model.step(by: 1) }
+                .help("Next frame (Right Arrow)")
             Button("Forward 10 seconds", systemImage: "goforward.10") { model.skip(seconds: 10) }
+                .help("Forward 10 seconds (Shift-Right Arrow)")
             Divider().frame(height: Space.lg)
             Button("Segment start", systemImage: "arrow.down.to.line.compact") { model.markStart() }
                 .help("Mark the segment start (I)")
@@ -454,6 +559,7 @@ struct TimelineBar: View {
             .frame(width: handleWidth, height: 20)
             .offset(x: position - handleWidth / 2) // grid: ok position follows the video time
             .accessibilityLabel(label)
+            .help("\(label): drag to move it")
             .highPriorityGesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("timeline"))
                 .onChanged { drag in
                     let fraction = min(max(drag.location.x / max(1, width), 0), 1)

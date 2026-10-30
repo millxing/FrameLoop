@@ -63,6 +63,14 @@ struct PlayerCommands: Commands {
     var body: some Commands {
         SidebarCommands()
         ToolbarCommands()
+        CommandGroup(after: .toolbar) {
+            Button(player?.showAdjustments == true ? "Hide Adjustments" : "Show Adjustments") { player?.showAdjustments.toggle() }
+                .keyboardShortcut("a", modifiers: [.command, .option])
+                .disabled(player?.video == nil)
+            Button(player?.showInfo == true ? "Hide Video Info" : "Show Video Info") { player?.showInfo.toggle() }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+                .disabled(player?.video == nil)
+        }
         CommandGroup(replacing: .undoRedo) {
             Button("Undo Edit") { player?.undoEdit() }
                 .keyboardShortcut("z")
@@ -89,8 +97,11 @@ struct PlayerCommands: Commands {
             Button("Save Screenshot") { player?.saveScreenshot() }
                 .keyboardShortcut("s", modifiers: [])
                 .disabled(!(player?.canExport ?? false))
-            Button("Export MP4…") { player?.export(.mp4) }
+            Button("Export MP4 (Original Size)…") { player?.export(.mp4Original) }
                 .keyboardShortcut("e")
+                .disabled(!(player?.canExport ?? false))
+            Button("Export MP4 (768×512)…") { player?.export(.mp4Small) }
+                .keyboardShortcut("e", modifiers: [.command, .option])
                 .disabled(!(player?.canExport ?? false))
             Button("Export GIF…") { player?.export(.gif) }
                 .keyboardShortcut("e", modifiers: [.command, .shift])

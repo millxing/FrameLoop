@@ -128,7 +128,7 @@ enum SelfTest {
         model.mirrored = false
 
         // S-016 MP4: segment 10...30 at 24 fps from 30 fps source
-        model.export(.mp4)
+        model.export(.mp4Small)
         await model.waitForJob()
         if let url = model.toast?.url {
             let asset = AVURLAsset(url: url)
@@ -155,16 +155,101 @@ enum SelfTest {
         // S-018 cancel leaves nothing behind
         let before = (try? FileManager.default.contentsOfDirectory(atPath: AppSettings.shared.exportDirectory))?.count ?? 0
         model.segment = nil
-        model.export(.mp4)
+        model.export(.mp4Small)
         model.cancelJob()
         await model.waitForJob()
         let after = (try? FileManager.default.contentsOfDirectory(atPath: AppSettings.shared.exportDirectory))?.count ?? 0
         check("S-018 cancelling an export leaves no partial file", after == before, "\(before) -> \(after)")
         check("S-018 the job is cleared", model.job == nil)
 
+        try await lookChecks(model: model)
         try await audioChecks(model: model)
         try await editChecks(model: model, sample: sample)
         try await compatibilityChecks(model: model, sample: sample)
+    }
+
+    /// S-029 faster speeds, S-030 default loop, S-031 original-size MP4, S-032 mirror, S-033 adjustments.
+    private static func lookChecks(model: PlayerModel) async throws {
+        check("S-030 a new player loops by default", PlayerModel().loopEnabled)
+        check("S-029 speeds include 1.25×, 1.5×, and 2×", [1.25, 1.5, 2].allSatisfy(PlaybackSpeed.all.contains))
+
+        // S-029 double speed plays about twice as far
+        model.segment = nil
+        model.loopEnabled = false
+        model.speed = 2
+        model.seek(toFrame: 0)
+        model.play()
+        try await Task.sleep(for: .seconds(0.6))
+        model.pause()
+        check("S-029 double speed plays about twice as far", (28...50).contains(model.currentFrame), "frame \(model.currentFrame)")
+        model.speed = 1
+        model.loopEnabled = true
+
+        // S-031 the default MP4 keeps the clip's size and frame rate; at 2× it is half as long
+        model.setSegmentStart(frame: 0)
+        model.setSegmentEnd(frame: 59)
+        model.speed = 2
+        model.toast = nil
+        model.export(.mp4Original)
+        await model.waitForJob()
+        if let url = model.toast?.url {
+            let asset = AVURLAsset(url: url)
+            let track = try await asset.loadTracks(withMediaType: .video).first
+            let size = try await track?.load(.naturalSize)
+            let rate = try await track?.load(.nominalFrameRate) ?? 0
+            let duration = try await asset.load(.duration).seconds
+            check("S-031 original-size MP4 is 640×360", size == CGSize(width: 640, height: 360), "\(String(describing: size))")
+            check("S-031 original-size MP4 keeps 30 fps", abs(Double(rate) - 30) < 0.5, "\(rate)")
+            check("S-029 a 2× export is half as long", abs(duration - 1.0) < 0.1, "\(duration)")
+        } else { check("S-031 original-size MP4 export finished", false, model.message ?? "no file") }
+        model.speed = 1
+        model.segment = nil
+        model.toast = nil
+
+        guard let video = model.video else { return }
+        func frame(_ adjustments: Adjustments, mirrored: Bool) async throws -> CGImage {
+            let composition = try await PictureAdjuster.composition(for: video.asset, adjustments: adjustments, mirrored: mirrored)
+            let generator = AVAssetImageGenerator(asset: video.asset)
+            generator.videoComposition = composition
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            return try await generator.image(at: CMTime(seconds: video.frames[0].seekTime, preferredTimescale: 90_000)).image
+        }
+
+        // S-032 mirror turns the picture left to right, as the player draws it
+        if let plain = yellowSides(try await frame(Adjustments(), mirrored: false)), let flipped = yellowSides(try await frame(Adjustments(), mirrored: true)) {
+            check("S-032 without mirror the square is on the left", plain.left && !plain.right)
+            check("S-032 with mirror the square is on the right, the right way up", flipped.right && !flipped.left)
+            check("S-032 mirror keeps the picture size", plain.width == flipped.width && plain.height == flipped.height)
+        } else { check("S-032 the mirrored frame can be read", false) }
+
+        // S-032 the player itself takes the composition when mirror is on, and drops it when off
+        model.mirrored = true
+        try await Task.sleep(for: .seconds(0.5))
+        check("S-032 the player item mirrors the picture", model.player.currentItem?.videoComposition != nil)
+        model.mirrored = false
+        try await Task.sleep(for: .milliseconds(200))
+        check("S-032 turning mirror off clears it", model.player.currentItem?.videoComposition == nil)
+
+        // S-033 adjustments change the picture
+        var gray = Adjustments()
+        gray.saturation = 0
+        if let result = yellowSides(try await frame(gray, mirrored: false)) {
+            check("S-033 saturation 0 removes the colour in the player", !result.left && !result.right)
+        } else { check("S-033 the desaturated frame can be read", false) }
+        var dark = Adjustments()
+        dark.brightness = -0.6
+        model.adjustments = dark
+        model.seek(toFrame: 0)
+        try await Task.sleep(for: .seconds(0.3))
+        model.saveScreenshot()
+        try await waitForToast(model)
+        if let shot = model.toast?.url, let result = yellowSides(shot) {
+            check("S-033 adjustments apply to screenshots", !result.left && !result.right)
+        } else { check("S-033 the adjusted screenshot can be read", false) }
+        model.toast = nil
+        model.adjustments = Adjustments()
+        check("S-033 Reset puts every control back to neutral", model.adjustments.isNeutral)
     }
 
     /// The test clip's tone rises from 400 to 1200 Hz over 3 s, so the pitch at any moment says which source second is playing.
@@ -174,7 +259,7 @@ enum SelfTest {
 
         func exported() async throws -> (url: URL, samples: [Float], seconds: Double, video: Double)? {
             model.toast = nil
-            model.export(.mp4)
+            model.export(.mp4Small)
             await model.waitForJob()
             guard let url = model.toast?.url else { return nil }
             let asset = AVURLAsset(url: url)
@@ -292,7 +377,7 @@ enum SelfTest {
         try await Task.sleep(for: .seconds(0.4))
         check("S-020 stepping crosses the join", model.currentFrame == 90 && Timeline.frameAtTime(model.video!.frames, time: model.player.currentTime().seconds) == 90)
         model.segment = nil
-        model.export(.mp4)
+        model.export(.mp4Small)
         await model.waitForJob()
         if let url = model.toast?.url {
             let asset = AVURLAsset(url: url)
@@ -351,10 +436,15 @@ enum SelfTest {
     }
 
     /// Whether a yellow pixel sits in the left or right third of the image's middle row.
-    private static func yellowSides(_ url: URL) -> (Int, Int, Bool, Bool)? {
+    private static func yellowSides(_ url: URL) -> (width: Int, height: Int, left: Bool, right: Bool)? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
-              let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        return yellowSides(image)
+    }
+
+    private static func yellowSides(_ image: CGImage) -> (width: Int, height: Int, left: Bool, right: Bool)? {
+        guard let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
               let data = { context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height)); return context.data }()
