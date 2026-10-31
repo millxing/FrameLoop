@@ -10,5 +10,5 @@ log=/tmp/FrameLoop2-snap.log
 rm -rf ~/Library/Saved\ Application\ State/com.robschoen.frameloop2.savedState
 rm -rf $shots
 : > $log
-open -W -n --env APP_STORE=/tmp/FrameLoop2-snap.store --env APP_SNAPSHOT=$shots --env APP_SNAPSHOT_PAGES="${APP_SNAPSHOT_PAGES:-empty,loaded,mirror,info,adjust,segment,export,settings}" --stdout $log --stderr $log ~/Applications/FrameLoop2.app
+open -W -n --env APP_STORE=/tmp/FrameLoop2-snap.store --env APP_SNAPSHOT=$shots --env APP_SNAPSHOT_PAGES="${APP_SNAPSHOT_PAGES:-empty,loaded,mirror,info,adjust,segment,export,settings}" --stdout $log --stderr $log /Applications/FrameLoop2.app
 cat $log

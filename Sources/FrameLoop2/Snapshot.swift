@@ -4,7 +4,7 @@ import IOKit.pwr_mgt
 import SwiftUI
 
 /// Screenshot mode for agents.
-///   APP_STORE=/tmp/test.store APP_SNAPSHOT=/tmp/shots ~/Applications/FrameLoop2.app/Contents/MacOS/FrameLoop2
+///   APP_STORE=/tmp/test.store APP_SNAPSHOT=/tmp/shots /Applications/FrameLoop2.app/Contents/MacOS/FrameLoop2
 /// writes <page>-light.png and <page>-dark.png for every page (empty, loaded, segment, export), and
 /// settings-<tab>-light.png and settings-<tab>-dark.png for every Settings tab, then quits.
 /// Each PNG gets a <page>-<mode>-layout.json with the grid probes (tools/check-layout.swift).

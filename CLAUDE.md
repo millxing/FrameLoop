@@ -8,7 +8,7 @@ SwiftData database and no server.
 - `Sources/FrameLoop2/` the app. `App.swift` has the window, menus, and the database location.
 - `Sources/FrameLoop2Kit/` rules and data logic with no SwiftUI. Tests in `Tests/FrameLoop2KitTests/`.
 - `Package.swift` a Swift package. There is no Xcode project.
-- `build.sh` builds, signs, and installs `~/Applications/FrameLoop2.app`.
+- `build.sh` builds, signs, and installs `/Applications/FrameLoop2.app`.
 - `Icon/AppIcon.icon` the app icon, an Icon Composer file (JSON plus SVG layers). `build.sh` compiles it with `tools/make_icon.sh`; `tools/icon_review.sh` renders every look into one PNG.
 - `docs/` the brief, the screen index, and the user stories, when they exist.
 

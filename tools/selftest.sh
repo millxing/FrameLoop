@@ -5,6 +5,6 @@ set -u
 rm -rf ~/Library/Saved\ Application\ State/com.robschoen.frameloop2.savedState
 log=/tmp/FrameLoop2-self.log
 : > $log
-open -W -n --env APP_STORE=/tmp/FrameLoop2-self.store --stdout $log --stderr $log ~/Applications/FrameLoop2.app --args --selftest
+open -W -n --env APP_STORE=/tmp/FrameLoop2-self.store --stdout $log --stderr $log /Applications/FrameLoop2.app --args --selftest
 cat $log
 grep -q "^SELFTEST PASS" $log
