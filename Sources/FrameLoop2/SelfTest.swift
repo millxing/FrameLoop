@@ -167,6 +167,7 @@ enum SelfTest {
         try await tipChecks()
         appearanceChecks()
         try await panelFitChecks(model: model)
+        try await fullScreenChecks(model: model)
         try await audioChecks(model: model)
         try await editChecks(model: model, sample: sample)
         try await compatibilityChecks(model: model, sample: sample)
@@ -212,6 +213,27 @@ enum SelfTest {
         store.mode = .system
         check("S-036 System follows the Mac", NSApp.appearance == nil)
         check("S-036 there are three choices", AppearanceMode.allCases.map(\.title) == ["System", "Light", "Dark"])
+    }
+
+    /// S-038 full screen shows just the video and restores everything on the way out.
+    private static func fullScreenChecks(model: PlayerModel) async throws {
+        guard let window = model.window else {
+            check("S-038 the model knows its window", false)
+            return
+        }
+        check("S-038 Full Screen is available with a video open", model.canFullScreen)
+        model.showAdjustments = true
+        model.toggleFullScreen()
+        try await Task.sleep(for: .seconds(2.5))
+        check("S-038 the window is full screen", window.styleMask.contains(.fullScreen))
+        check("S-038 the model follows", model.fullScreen)
+        check("S-038 the Adjustments panel is put away", !model.showAdjustments)
+        model.toggleFullScreen()
+        try await Task.sleep(for: .seconds(2.5))
+        check("S-038 leaving returns to a normal window", !window.styleMask.contains(.fullScreen) && !model.fullScreen)
+        check("S-038 the Adjustments panel comes back", model.showAdjustments)
+        model.showAdjustments = false
+        try await Task.sleep(for: .seconds(0.3))
     }
 
     /// S-035 hovering a control shows its tooltip after a short rest, and leaving hides it.

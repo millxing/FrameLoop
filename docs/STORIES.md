@@ -319,6 +319,15 @@ Acceptance:
 - [manual] The result looks sharper than a plain enlargement.
 Status: done
 
+### S-038 Play the video full screen
+As the user, I press the Full Screen button (or F) and the video fills the screen with no sidebar or toolbar; moving the pointer shows the controls, and Escape or F leaves.
+Acceptance:
+- [self] The window enters and leaves macOS full screen, and an open Adjustments panel is put away and brought back.
+- [manual] Entering full screen by any route (green button, Control-Command-F) also hides the sidebar.
+- [manual] The controls fade in over the bottom of the video when the pointer moves and fade out, with the pointer, after 2.5 seconds at rest.
+- [manual] Loop, speed, and frame stepping keep working while full screen.
+Status: done
+
 ## Known gaps
 - S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
 - S-029..S-033: the player's picture was checked through AVFoundation frames; the live window was not viewed (no Screen Recording permission).

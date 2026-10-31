@@ -29,6 +29,20 @@ final class PlayerModel {
     var mirrored = false { didSet { refreshLook() } }
     var adjustments = Adjustments() { didSet { refreshLook() } }
     var showAdjustments = false
+    /// The window is full screen: just the video, with the controls fading in when the pointer moves.
+    var fullScreen = false {
+        didSet {
+            guard fullScreen != oldValue else { return }
+            if fullScreen {
+                adjustmentsBeforeFullScreen = showAdjustments
+                showAdjustments = false
+            } else {
+                showAdjustments = adjustmentsBeforeFullScreen
+            }
+        }
+    }
+    @ObservationIgnored weak var window: NSWindow?
+    @ObservationIgnored private var adjustmentsBeforeFullScreen = false
     /// Shows the picture size and frame rate over the video. Remembered between launches.
     var showInfo = Store.isOverridden ? false : UserDefaults.standard.bool(forKey: "showVideoInfo") {
         didSet { if !Store.isOverridden { UserDefaults.standard.set(showInfo, forKey: "showVideoInfo") } }
@@ -54,6 +68,12 @@ final class PlayerModel {
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 120), queue: .main) { [weak self] time in
             MainActor.assumeIsolated { self?.tick(time.seconds) }
         }
+    }
+
+    var canFullScreen: Bool { video != nil }
+
+    func toggleFullScreen() {
+        window?.toggleFullScreen(nil)
     }
 
     // MARK: Opening

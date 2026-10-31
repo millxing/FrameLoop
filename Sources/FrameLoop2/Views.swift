@@ -62,10 +62,12 @@ struct PlayerWindow: View {
     @State private var library = Library()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    @State private var columns = NavigationSplitViewVisibility.all
+    @State private var columnsBeforeFullScreen = NavigationSplitViewVisibility.all
     private let router = OpenRouter.shared
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columns) {
             SidebarView(model: model, library: library)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
         } detail: {
@@ -74,6 +76,15 @@ struct PlayerWindow: View {
         .navigationTitle(model.video?.url.lastPathComponent ?? "FrameLoop2")
         .toolbar { PlayerToolbar(model: model) }
         .focusedSceneValue(\.player, model)
+        .tracksFullScreen(model)
+        .onChange(of: model.fullScreen) { _, on in
+            if on {
+                columnsBeforeFullScreen = columns
+                columns = .detailOnly
+            } else {
+                columns = columnsBeforeFullScreen
+            }
+        }
         .noInitialFocus()
         .frame(minHeight: 520)
         .task {
@@ -137,6 +148,9 @@ struct PlayerToolbar: ToolbarContent {
                 .tip("Show the picture size and frame rate (Option-Command-I)")
             Toggle(isOn: $model.showAdjustments) { Label("Adjustments", systemImage: "slider.horizontal.3") }
                 .tip("Brightness, contrast, saturation, and more (Option-Command-A)")
+            Button("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right") { model.toggleFullScreen() }
+                .disabled(!model.canFullScreen)
+                .tip("Play the video full screen (F). Escape leaves full screen.")
         }
         ToolbarItemGroup {
             Button("Delete Selection", systemImage: "trash") { Task { await model.deleteSelection() } }
@@ -215,6 +229,9 @@ struct SidebarView: View {
 
 struct PlayerScreen: View {
     @Bindable var model: PlayerModel
+    /// In full screen the controls show while the pointer moves and fade away after a rest.
+    @State private var controlsShown = true
+    @State private var hideTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -240,7 +257,22 @@ struct PlayerScreen: View {
         }
         .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if model.video != nil { Controls(model: model) }
+            if model.video != nil, !model.fullScreen { Controls(model: model) }
+        }
+        .overlay(alignment: .bottom) {
+            if model.video != nil, model.fullScreen {
+                Controls(model: model)
+                    .frame(maxWidth: 900)
+                    .opacity(controlsShown ? 1 : 0)
+                    .allowsHitTesting(controlsShown)
+                    .animation(.easeInOut(duration: 0.25), value: controlsShown)
+            }
+        }
+        .onContinuousHover { phase in
+            if case .active = phase, model.fullScreen { revealControls() }
+        }
+        .onChange(of: model.fullScreen) { _, on in
+            if on { revealControls() } else { hideTask?.cancel() }
         }
         .overlay(alignment: .topLeading) {
             if model.showInfo, let video = model.video { VideoInfoBadge(video: video) }
@@ -268,6 +300,19 @@ struct PlayerScreen: View {
         .inspector(isPresented: $model.showAdjustments) {
             AdjustmentsPanel(model: model)
                 .inspectorColumnWidth(min: 240, ideal: 260, max: 320)
+        }
+    }
+}
+
+extension PlayerScreen {
+    private func revealControls() {
+        controlsShown = true
+        hideTask?.cancel()
+        hideTask = Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled, model.fullScreen else { return }
+            controlsShown = false
+            NSCursor.setHiddenUntilMouseMoves(true)
         }
     }
 }

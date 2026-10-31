@@ -65,6 +65,14 @@ struct PlayerCommands: Commands {
         SidebarCommands()
         ToolbarCommands()
         CommandGroup(after: .toolbar) {
+            Button(player?.fullScreen == true ? "Exit Full Screen Video" : "Full Screen Video") { player?.toggleFullScreen() }
+                .keyboardShortcut("f", modifiers: [])
+                .disabled(!(player?.canFullScreen ?? false) && player?.fullScreen != true)
+            // Escape only means "leave" while full screen, so it never competes with a sheet's Cancel.
+            if player?.fullScreen == true, player?.job == nil {
+                Button("Leave Full Screen") { player?.toggleFullScreen() }
+                    .keyboardShortcut(.escape, modifiers: [])
+            }
             Button(player?.showAdjustments == true ? "Hide Adjustments" : "Show Adjustments") { player?.showAdjustments.toggle() }
                 .keyboardShortcut("a", modifiers: [.command, .option])
                 .disabled(player?.video == nil)
