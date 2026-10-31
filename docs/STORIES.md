@@ -348,6 +348,12 @@ Acceptance:
 - [self] A file that starts 1/30 s late opens with all its frames, the first at 1/30 s, and exports at original size.
 Status: done
 
+### S-042 Open a video from Finder without a stray window
+As the user, I open videos from Finder, with FrameLoop2 running or not, and get one window per video and no blank extra window.
+Acceptance:
+- [manual] `open -a FrameLoop2 a.mp4` cold gives 1 window; again while running gives 1 more; three files at once give three windows (checked with System Events window counts).
+Status: done
+
 ## Known gaps
 - S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
 - S-029..S-033: the player's picture was checked through AVFoundation frames; the live window was not viewed (no Screen Recording permission).

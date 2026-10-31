@@ -23,6 +23,8 @@ struct FrameLoop2App: App {
             WindowRequest()
         }
         .restorationBehavior(.disabled)
+        // Files arrive through the app delegate and OpenRouter. Without this SwiftUI also opens its own blank window per open.
+        .handlesExternalEvents(matching: [])
         .defaultSize(width: 1100, height: 720)
         .windowToolbarStyle(.unified)
         .commands { PlayerCommands() }
@@ -46,6 +48,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         OpenRouter.shared.pending.append(contentsOf: urls.filter(MediaFormats.isSupported))
+        // Launched by a file, SwiftUI makes no window of its own (see handlesExternalEvents), so make the one that takes it.
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            let hasWindow = NSApp.windows.contains { $0.canBecomeMain && $0.isVisible }
+            if !hasWindow { AppDelegate.chooseMenuItem(titled: "New Window") }
+        }
+    }
+
+    /// Runs a menu command by its title, as a click would.
+    private static func chooseMenuItem(titled title: String) {
+        guard let menu = NSApp.mainMenu else { return }
+        for top in menu.items {
+            guard let submenu = top.submenu, let index = submenu.items.firstIndex(where: { $0.title == title }) else { continue }
+            submenu.performActionForItem(at: index)
+            return
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

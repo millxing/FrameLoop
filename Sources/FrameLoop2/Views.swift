@@ -60,6 +60,7 @@ struct PlayerWindow: View {
     let request: WindowRequest?
     @State private var model = PlayerModel()
     @State private var library = Library()
+    @State private var consuming = false
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     private let router = OpenRouter.shared
@@ -94,8 +95,15 @@ struct PlayerWindow: View {
 
     /// A blank window takes the file itself. Any other window opens it in a new one.
     private func consumePending() async {
+        // One run at a time per window, and `video` is set only once loading ends: so two runs would both
+        // see a blank window and load their files over each other.
+        guard !consuming else { return }
+        consuming = true
+        defer { consuming = false }
+        var taken = model.video != nil
         while let url = router.take() {
-            if model.video == nil {
+            if !taken {
+                taken = true
                 await model.open(url)
             } else {
                 openWindow(value: WindowRequest(url: url))
