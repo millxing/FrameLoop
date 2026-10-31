@@ -328,6 +328,19 @@ Acceptance:
 - [manual] Loop, speed, and frame stepping keep working while full screen.
 Status: done
 
+### S-039 The sidebar steps aside once a video is loaded
+As the user, I open a video and the list of videos closes so the picture has the whole window; I can bring it back with the sidebar button.
+Acceptance:
+- [self] Loading the first video closes the sidebar; closing the video shows it again; loading another video later leaves it as I set it.
+Status: done
+
+### S-040 Click the picture to play or pause
+As the user, I click anywhere on the video to play it, and click again to pause.
+Acceptance:
+- [self] A click on the picture toggles playback.
+- [manual] Clicks on the controls and toolbar do not toggle playback.
+Status: done
+
 ## Known gaps
 - S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
 - S-029..S-033: the player's picture was checked through AVFoundation frames; the live window was not viewed (no Screen Recording permission).

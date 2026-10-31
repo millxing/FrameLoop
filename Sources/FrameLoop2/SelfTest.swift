@@ -168,6 +168,7 @@ enum SelfTest {
         appearanceChecks()
         try await panelFitChecks(model: model)
         try await fullScreenChecks(model: model)
+        try await clickChecks(model: model, sample: sample)
         try await audioChecks(model: model)
         try await editChecks(model: model, sample: sample)
         try await compatibilityChecks(model: model, sample: sample)
@@ -213,6 +214,42 @@ enum SelfTest {
         store.mode = .system
         check("S-036 System follows the Mac", NSApp.appearance == nil)
         check("S-036 there are three choices", AppearanceMode.allCases.map(\.title) == ["System", "Light", "Dark"])
+    }
+
+    /// S-039 the sidebar steps aside when a video loads; S-040 clicking the picture plays and pauses.
+    private static func clickChecks(model: PlayerModel, sample: URL) async throws {
+        model.close()
+        check("S-039 an empty window shows the sidebar", model.columns == .all)
+        await model.open(sample)
+        check("S-039 loading a video closes the sidebar", model.columns == .detailOnly)
+        model.columns = .all
+        await model.open(sample)
+        check("S-039 loading another video leaves the sidebar as the person set it", model.columns == .all)
+        model.columns = .detailOnly
+        try await Task.sleep(for: .seconds(0.5))
+
+        guard let window = model.window, let content = window.contentView else {
+            check("S-040 a window is available", false)
+            return
+        }
+        window.makeKeyAndOrderFront(nil)
+        model.pause()
+        // The middle of the window is the middle of the picture; the controls sit along the bottom.
+        let point = NSPoint(x: content.bounds.midX, y: content.bounds.midY + 40)
+        func click() async throws {
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
+                    window.sendEvent(event)
+                }
+            }
+            try await Task.sleep(for: .seconds(0.4))
+        }
+        try await click()
+        check("S-040 clicking the picture plays", model.isPlaying)
+        try await click()
+        check("S-040 clicking again pauses", !model.isPlaying)
+        model.seek(toFrame: 0)
     }
 
     /// S-038 full screen shows just the video and restores everything on the way out.

@@ -62,12 +62,10 @@ struct PlayerWindow: View {
     @State private var library = Library()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
-    @State private var columns = NavigationSplitViewVisibility.all
-    @State private var columnsBeforeFullScreen = NavigationSplitViewVisibility.all
     private let router = OpenRouter.shared
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columns) {
+        NavigationSplitView(columnVisibility: $model.columns) {
             SidebarView(model: model, library: library)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
         } detail: {
@@ -77,14 +75,6 @@ struct PlayerWindow: View {
         .toolbar { PlayerToolbar(model: model) }
         .focusedSceneValue(\.player, model)
         .tracksFullScreen(model)
-        .onChange(of: model.fullScreen) { _, on in
-            if on {
-                columnsBeforeFullScreen = columns
-                columns = .detailOnly
-            } else {
-                columns = columnsBeforeFullScreen
-            }
-        }
         .noInitialFocus()
         .frame(minHeight: 520)
         .task {
@@ -240,6 +230,10 @@ struct PlayerScreen: View {
                 PlayerSurface(player: model.player,
                               mirrored: model.lookInView && model.mirrored,
                               adjustments: model.lookInView ? model.adjustments : Adjustments())
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.togglePlay() }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
             } else if model.isLoading {
                 ProgressView("Preparing media…")
             } else {

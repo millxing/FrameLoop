@@ -2,6 +2,7 @@
 import AppKit
 import FrameLoop2Kit
 import Observation
+import SwiftUI
 
 /// One window's player: the open video, where it is, the marked segment, and the loop settings.
 @Observable
@@ -29,20 +30,26 @@ final class PlayerModel {
     var mirrored = false { didSet { refreshLook() } }
     var adjustments = Adjustments() { didSet { refreshLook() } }
     var showAdjustments = false
+    /// Whether the sidebar shows. It steps aside when the first video loads and returns when the video closes.
+    var columns = NavigationSplitViewVisibility.all
     /// The window is full screen: just the video, with the controls fading in when the pointer moves.
     var fullScreen = false {
         didSet {
             guard fullScreen != oldValue else { return }
             if fullScreen {
                 adjustmentsBeforeFullScreen = showAdjustments
+                columnsBeforeFullScreen = columns
                 showAdjustments = false
+                columns = .detailOnly
             } else {
                 showAdjustments = adjustmentsBeforeFullScreen
+                columns = columnsBeforeFullScreen
             }
         }
     }
     @ObservationIgnored weak var window: NSWindow?
     @ObservationIgnored private var adjustmentsBeforeFullScreen = false
+    @ObservationIgnored private var columnsBeforeFullScreen = NavigationSplitViewVisibility.all
     /// Shows the picture size and frame rate over the video. Remembered between launches.
     var showInfo = Store.isOverridden ? false : UserDefaults.standard.bool(forKey: "showVideoInfo") {
         didSet { if !Store.isOverridden { UserDefaults.standard.set(showInfo, forKey: "showVideoInfo") } }
@@ -147,6 +154,8 @@ final class PlayerModel {
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.itemDidEnd() }
         }
+        // The first video in a window puts the list of videos away; the person can bring it back.
+        if video == nil { columns = fullScreen ? columns : .detailOnly }
         video = loaded
         segment = nil
         direction = .forward
@@ -184,6 +193,7 @@ final class PlayerModel {
         video = nil
         segment = nil
         currentFrame = 0
+        if !fullScreen { columns = .all }
     }
 
     /// Snapshot mode shows the export sheet without running an export.
