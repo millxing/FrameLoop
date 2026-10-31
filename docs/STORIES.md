@@ -307,6 +307,15 @@ Acceptance:
 - [manual] The choice is kept after relaunch.
 Status: done
 
+### S-037 Export an upscaled MP4
+As the user, I choose "Export MP4 (Upscaled 2×)" and get a video twice the size, enlarged by Apple's machine-learning upscaler.
+Acceptance:
+- [self] A 640×360 clip exports as 1280×720 at the same frame rate, with the mirror and adjustments kept.
+- [self] The item is disabled with an explanation for clips over 1920×1080, and on Macs without the upscaler.
+- [manual] The first use shows "Downloading the upscaling model…" with progress, then "Upscaling video…"; Cancel stops it and leaves no file.
+- [manual] The result looks sharper than a plain enlargement.
+Status: done
+
 ## Known gaps
 - S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
 - S-029..S-033: the player's picture was checked through AVFoundation frames; the live window was not viewed (no Screen Recording permission).

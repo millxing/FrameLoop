@@ -158,6 +158,7 @@ struct PlayerToolbar: ToolbarContent {
             Menu {
                 ForEach(ExportFormat.allCases, id: \.self) { format in
                     Button(format.title) { model.export(format) }
+                        .disabled(model.video.flatMap(format.problem(for:)) != nil)
                 }
             } label: {
                 Label("Export Segment", systemImage: "square.and.arrow.up")

@@ -163,6 +163,7 @@ enum SelfTest {
         check("S-018 the job is cleared", model.job == nil)
 
         try await lookChecks(model: model)
+        try await upscaleChecks(model: model)
         try await tipChecks()
         appearanceChecks()
         try await panelFitChecks(model: model)
@@ -244,6 +245,41 @@ enum SelfTest {
         check("S-035 resting on a button shows its tooltip", TipPanel.shared.isShowing && TipPanel.shared.text == target.text, TipPanel.shared.text)
         target.mouseExited(with: event)
         check("S-035 leaving hides the tooltip", !TipPanel.shared.isShowing)
+    }
+
+    /// S-037 the upscaled export doubles the picture size and keeps the look.
+    private static func upscaleChecks(model: PlayerModel) async throws {
+        check("S-037 a 4K clip is too big to upscale", FrameUpscaler.problem(width: 3840, height: 2160) != nil
+              || !VTSuperResolutionScalerConfiguration.isSupported)
+        guard let video = model.video else { return }
+        guard ExportFormat.mp4Upscaled.problem(for: video) == nil else {
+            check("S-037 upscaling is unavailable on this Mac, so the export is skipped", true)
+            return
+        }
+        model.setSegmentStart(frame: 0)
+        model.setSegmentEnd(frame: 5)
+        model.mirrored = true
+        model.toast = nil
+        model.message = nil
+        model.export(.mp4Upscaled)
+        await model.waitForJob()
+        if let url = model.toast?.url {
+            let asset = AVURLAsset(url: url)
+            let track = try await asset.loadTracks(withMediaType: .video).first
+            let size = try await track?.load(.naturalSize)
+            let rate = try await track?.load(.nominalFrameRate) ?? 0
+            check("S-037 the upscaled MP4 is 1280×720", size == CGSize(width: 1280, height: 720), "\(String(describing: size))")
+            check("S-037 the upscaled MP4 keeps 30 fps", abs(Double(rate) - 30) < 0.5, "\(rate)")
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            if let image = try? await generator.image(at: .zero).image, let sides = yellowSides(image) {
+                check("S-037 the upscaled picture keeps the mirror (square on the right)", sides.right && !sides.left)
+            } else { check("S-037 the upscaled frame can be read", false) }
+        } else { check("S-037 the upscaled export finished", false, model.message ?? "no file") }
+        model.mirrored = false
+        model.segment = nil
+        model.toast = nil
     }
 
     /// S-029 faster speeds, S-030 default loop, S-031 original-size MP4, S-032 mirror, S-033 adjustments.

@@ -104,6 +104,9 @@ struct PlayerCommands: Commands {
             Button("Export MP4 (768×512)…") { player?.export(.mp4Small) }
                 .keyboardShortcut("e", modifiers: [.command, .option])
                 .disabled(!(player?.canExport ?? false))
+            Button("Export MP4 (Upscaled 2×)…") { player?.export(.mp4Upscaled) }
+                .keyboardShortcut("e", modifiers: [.command, .option, .shift])
+                .disabled(!(player?.canExport ?? false) || player?.video.flatMap(ExportFormat.mp4Upscaled.problem(for:)) != nil)
             Button("Export GIF…") { player?.export(.gif) }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(!(player?.canExport ?? false))

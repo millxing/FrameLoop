@@ -456,6 +456,10 @@ final class PlayerModel {
 
     func export(_ format: ExportFormat) {
         guard let video, job == nil else { return }
+        if let problem = format.problem(for: video) {
+            message = problem
+            return
+        }
         pause()
         let order = exportOrder()
         let speed = speed
@@ -474,6 +478,9 @@ final class PlayerModel {
                 let report: @Sendable (Double) -> Void = { [self] fraction in
                     Task { @MainActor in job?.fraction = fraction }
                 }
+                let retitle: @Sendable (String) -> Void = { [self] title in
+                    Task { @MainActor in job?.title = title }
+                }
                 switch format {
                 case .mp4Original:
                     try await Exporter.exportMP4(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments,
@@ -481,6 +488,10 @@ final class PlayerModel {
                 case .mp4Small:
                     try await Exporter.exportMP4(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments,
                                                  target: .small, to: url, progress: report)
+                case .mp4Upscaled:
+                    try await Exporter.exportMP4(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments,
+                                                 target: .upscaled(of: video), upscale: true, to: url,
+                                                 phase: retitle, progress: report)
                 case .gif:
                     try await Exporter.exportGIF(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments, to: url, progress: report)
                 }

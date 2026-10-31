@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
+import CoreImage
 import FrameLoop2Kit
 import ImageIO
 import UniformTypeIdentifiers
@@ -8,17 +9,32 @@ nonisolated enum ExportFormat: Sendable, CaseIterable {
     /// The default: the clip's own size and frame rate.
     case mp4Original
     case mp4Small
+    /// Twice the clip's size, enlarged with Apple's machine-learning upscaler.
+    case mp4Upscaled
     case gif
 
     var title: String {
         switch self {
         case .mp4Original: "Export MP4 H.264 · original size and frame rate"
         case .mp4Small: "Export MP4 H.264 · 24 FPS · 768×512 (letterboxed)"
+        case .mp4Upscaled: "Export MP4 H.264 · upscaled 2× · original frame rate"
         case .gif: "Export animated GIF · 15 FPS · max 640 px wide"
         }
     }
 
-    var jobTitle: String { self == .gif ? "Exporting GIF…" : "Exporting video…" }
+    var jobTitle: String {
+        switch self {
+        case .gif: "Exporting GIF…"
+        case .mp4Upscaled: "Upscaling video…"
+        default: "Exporting video…"
+        }
+    }
+
+    /// Why this clip cannot be exported in this format, or nil when it can.
+    func problem(for video: LoadedVideo) -> String? {
+        guard self == .mp4Upscaled else { return nil }
+        return FrameUpscaler.problem(width: video.width, height: video.height)?.errorDescription
+    }
 }
 
 /// Size, frame rate, and bit rate of one MP4 export.
@@ -33,6 +49,14 @@ nonisolated struct MP4Target: Sendable {
     /// The clip's own picture size and measured frame rate.
     static func original(of video: LoadedVideo) -> MP4Target {
         let size = ExportPlan.evenSize(width: video.width, height: video.height)
+        return MP4Target(width: size.width, height: size.height, fps: max(1, video.frameRate),
+                         bitrate: ExportPlan.bitrate(width: size.width, height: size.height))
+    }
+
+    /// Twice the clip's picture size, at its measured frame rate.
+    static func upscaled(of video: LoadedVideo) -> MP4Target {
+        let size = ExportPlan.evenSize(width: video.width * FrameUpscaler.outputFactor,
+                                       height: video.height * FrameUpscaler.outputFactor)
         return MP4Target(width: size.width, height: size.height, fps: max(1, video.frameRate),
                          bitrate: ExportPlan.bitrate(width: size.width, height: size.height))
     }
@@ -94,7 +118,8 @@ nonisolated enum Exporter {
 
     @concurrent
     static func exportMP4(video: LoadedVideo, order: [Int], speed: Double, mirrored: Bool, adjustments: Adjustments,
-                          target: MP4Target, to url: URL,
+                          target: MP4Target, upscale: Bool = false, to url: URL,
+                          phase: @escaping @Sendable (String) -> Void = { _ in },
                           progress: @escaping @Sendable (Double) -> Void) async throws {
         let fps = target.fps
         let outputFrames = ExportPlan.outputFrames(order: order, durations: video.frames.map(\.duration),
@@ -102,6 +127,16 @@ nonisolated enum Exporter {
         let (width, height) = (target.width, target.height)
         let box = ExportPlan.letterbox(sourceWidth: video.width, sourceHeight: video.height,
                                        frameWidth: width, frameHeight: height)
+        // The model may need to download first, so a Mac without it fails before any file is written.
+        var upscaler: FrameUpscaler?
+        if upscale {
+            let scaler = try FrameUpscaler(width: video.width, height: video.height)
+            phase("Downloading the upscaling model…")
+            try await scaler.prepareModel(progress: progress)
+            phase("Upscaling video…")
+            progress(0)
+            upscaler = scaler
+        }
         // Sound first: it is cut to the same frames, so a bad audio track fails before any video work.
         var audio = try await AudioExport.render(video: video, order: order, speed: speed).map(AudioFeeder.init)
         try? FileManager.default.removeItem(at: url)
@@ -133,38 +168,52 @@ nonisolated enum Exporter {
         writer.startSession(atSourceTime: .zero)
 
         let images = generator(for: video)
-        images.maximumSize = CGSize(width: box.width * 2, height: box.height * 2)
+        // Upscaling starts from the picture at its own size; an ordinary export never needs more than twice the box.
+        if !upscale { images.maximumSize = CGSize(width: box.width * 2, height: box.height * 2) }
         var cachedIndex = -1
         var cachedImage: CGImage?
+        var cachedUpscale: CVPixelBuffer?
         do {
             for (tick, source) in outputFrames.enumerated() {
                 try Task.checkCancellation()
                 if source != cachedIndex {
-                    cachedImage = PictureAdjuster.apply(adjustments, to: try await images.image(at: cmTime(video.frames[source].seekTime)).image)
+                    let image = try await images.image(at: cmTime(video.frames[source].seekTime)).image
+                    if let upscaler {
+                        // The look and the mirror go on first, so the model enlarges the picture people see.
+                        let looked = PictureAdjuster.apply(adjustments, mirrored: mirrored, to: CIImage(cgImage: image))
+                        cachedUpscale = try await upscaler.upscale(looked, at: cmTime(Double(tick) / fps),
+                                                                   sequential: cachedIndex >= 0 && source == cachedIndex + 1)
+                    } else {
+                        cachedImage = PictureAdjuster.apply(adjustments, to: image)
+                    }
                     cachedIndex = source
                 }
-                guard let image = cachedImage, let pool = adaptor.pixelBufferPool else { continue }
+                guard let pool = adaptor.pixelBufferPool else { continue }
                 var buffer: CVPixelBuffer?
                 CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
                 guard let buffer else { continue }
-                CVPixelBufferLockBaseAddress(buffer, [])
-                if let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: width, height: height,
-                                           bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-                                           space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                           bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
-                    context.setFillColor(CGColor(gray: 0, alpha: 1))
-                    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-                    context.interpolationQuality = .high
-                    // CoreGraphics counts y from the bottom.
-                    let rect = CGRect(x: box.x, y: height - box.y - box.height, width: box.width, height: box.height)
-                    if mirrored {
-                        context.translateBy(x: rect.midX, y: 0)
-                        context.scaleBy(x: -1, y: 1)
-                        context.translateBy(x: -rect.midX, y: 0)
+                if let upscaler, let cachedUpscale {
+                    upscaler.render(cachedUpscale, into: buffer, width: width, height: height)
+                } else if let image = cachedImage {
+                    CVPixelBufferLockBaseAddress(buffer, [])
+                    if let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: width, height: height,
+                                               bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                                               space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                               bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
+                        context.setFillColor(CGColor(gray: 0, alpha: 1))
+                        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+                        context.interpolationQuality = .high
+                        // CoreGraphics counts y from the bottom.
+                        let rect = CGRect(x: box.x, y: height - box.y - box.height, width: box.width, height: box.height)
+                        if mirrored {
+                            context.translateBy(x: rect.midX, y: 0)
+                            context.scaleBy(x: -1, y: 1)
+                            context.translateBy(x: -rect.midX, y: 0)
+                        }
+                        context.draw(image, in: rect)
                     }
-                    context.draw(image, in: rect)
+                    CVPixelBufferUnlockBaseAddress(buffer, [])
                 }
-                CVPixelBufferUnlockBaseAddress(buffer, [])
                 // The writer interleaves audio and video, so keep audio flowing a little ahead of the picture
                 // or the video input would wait on it forever.
                 var ahead = Double(tick) / fps + 0.5
