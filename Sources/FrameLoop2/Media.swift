@@ -65,6 +65,15 @@ nonisolated enum MediaLoader {
         let hasAudio = try await !asset.loadTracks(withMediaType: .audio).isEmpty
 
         var times = try readTimes(asset: asset, track: track)
+        // Packet times are in the file's own media time. The player, the generator, and the audio use play time,
+        // which differs when the track starts with an empty edit or skips its first packets.
+        let segments = (try? await track.load(.segments))?.compactMap { segment -> MediaSegment? in
+            guard !segment.isEmpty else { return nil }
+            let source = segment.timeMapping.source
+            let target = segment.timeMapping.target
+            return MediaSegment(sourceStart: source.start.seconds, sourceEnd: source.end.seconds, targetStart: target.start.seconds)
+        } ?? []
+        times = MediaSegment.playTimes(of: times, segments: segments)
         guard !times.isEmpty else { throw MediaError.noFrames }
         times.sort()
 

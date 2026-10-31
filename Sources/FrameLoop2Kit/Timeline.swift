@@ -1,5 +1,30 @@
 import Foundation
 
+/// One stretch of a track's edit list: media from `sourceStart` to `sourceEnd` plays from `targetStart` on.
+/// Files often start with a short empty edit, or skip the first packets, so packet times are not play times.
+public struct MediaSegment: Sendable, Equatable {
+    public var sourceStart: Double
+    public var sourceEnd: Double
+    public var targetStart: Double
+
+    public init(sourceStart: Double, sourceEnd: Double, targetStart: Double) {
+        self.sourceStart = sourceStart
+        self.sourceEnd = sourceEnd
+        self.targetStart = targetStart
+    }
+
+    /// Packet times turned into play times. Packets outside every segment are never shown, so they are dropped.
+    /// No segments means no edit list: the times are returned as they are.
+    public static func playTimes(of times: [Double], segments: [MediaSegment]) -> [Double] {
+        guard !segments.isEmpty else { return times }
+        let slack = 0.0005
+        return times.compactMap { time in
+            segments.first { time >= $0.sourceStart - slack && time < $0.sourceEnd - slack }
+                .map { $0.targetStart + max(0, time - $0.sourceStart) }
+        }
+    }
+}
+
 /// One video frame: its index in presentation order, when it appears, how long it stays.
 public struct FrameInfo: Sendable, Equatable {
     public var index: Int

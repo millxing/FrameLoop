@@ -341,6 +341,13 @@ Acceptance:
 - [manual] Clicks on the controls and toolbar do not toggle playback.
 Status: done
 
+### S-041 Open and export files whose frames play later than their packets say
+As the user, I open a video that starts with an empty edit or skips its first packets, and every export works and stays in step with the picture and sound.
+Acceptance:
+- [unit] Packet times are mapped through the track's edit list; packets outside it are dropped.
+- [self] A file that starts 1/30 s late opens with all its frames, the first at 1/30 s, and exports at original size.
+Status: done
+
 ## Known gaps
 - S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
 - S-029..S-033: the player's picture was checked through AVFoundation frames; the live window was not viewed (no Screen Recording permission).

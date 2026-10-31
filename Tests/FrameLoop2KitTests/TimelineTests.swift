@@ -68,3 +68,15 @@ private func frames(_ count: Int, fps: Double = 10) -> [FrameInfo] {
     #expect(region.action(time: 1.0, direction: .forward) == .jump(4, .forward))
     #expect(region.action(time: 0.5, direction: .forward) == .none)
 }
+
+@Test func playTimesFollowTheEditList() {
+    let packets = [0, 1, 2, 3].map { Double($0) / 30 }
+    // No edit list: untouched.
+    #expect(MediaSegment.playTimes(of: packets, segments: []) == packets)
+    // An empty edit first pushes every frame later.
+    let late = MediaSegment.playTimes(of: packets, segments: [MediaSegment(sourceStart: 0, sourceEnd: 1, targetStart: 1.0 / 30)])
+    #expect(late.map { ($0 * 30).rounded() } == [1, 2, 3, 4])
+    // Skipping the first packets drops them and moves the rest to the start.
+    let trimmed = MediaSegment.playTimes(of: packets, segments: [MediaSegment(sourceStart: 2.0 / 30, sourceEnd: 1, targetStart: 0)])
+    #expect(trimmed.map { ($0 * 30).rounded() } == [0, 1])
+}

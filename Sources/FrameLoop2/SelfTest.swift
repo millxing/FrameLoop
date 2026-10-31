@@ -643,6 +643,24 @@ enum SelfTest {
             process.waitUntilExit()
             return output
         }
+        // S-041 a file that starts with an empty edit (every picture plays 1/30 s later than its packet says)
+        let late = folder.appending(path: "late.mp4")
+        let lateRun = Process()
+        lateRun.executableURL = ffmpeg
+        lateRun.arguments = ["-y", "-v", "error", "-itsoffset", "0.0334", "-i", sample.path, "-map", "0", "-c", "copy", late.path]
+        try? lateRun.run()
+        lateRun.waitUntilExit()
+        await model.open(late)
+        check("S-041 a file with a late start opens with every frame", model.video?.frames.count == 90, "\(model.video?.frames.count ?? -1)")
+        check("S-041 its first frame plays at 1/30 s, not 0", abs((model.video?.frames.first?.pts ?? 0) - 1.0 / 30) < 0.002,
+              "\(model.video?.frames.first?.pts ?? -1)")
+        model.toast = nil
+        model.message = nil
+        model.export(.mp4Original)
+        await model.waitForJob()
+        check("S-041 a file with a late start exports at its original size", model.toast?.url != nil, model.message ?? "no file")
+        model.toast = nil
+
         let mkv = make("clip.mkv", ["-c", "copy"])
         let avi = make("clip.avi", ["-c:v", "mpeg4", "-q:v", "2"])
         let gif = make("clip.gif", ["-vf", "fps=15,scale=320:-1"])
