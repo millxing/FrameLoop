@@ -488,9 +488,9 @@ final class PlayerModel {
                 case .mp4Small:
                     try await Exporter.exportMP4(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments,
                                                  target: .small, to: url, progress: report)
-                case .mp4Upscaled:
+                case .mp4Upscaled, .mp4UpscaledFast:
                     try await Exporter.exportMP4(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments,
-                                                 target: .upscaled(of: video), upscale: true, to: url,
+                                                 target: .upscaled(of: video), upscale: format.upscaleQuality, to: url,
                                                  phase: retitle, progress: report)
                 case .gif:
                     try await Exporter.exportGIF(video: video, order: order, speed: speed, mirrored: mirrored, adjustments: adjustments, to: url, progress: report)

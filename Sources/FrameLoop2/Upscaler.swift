@@ -2,9 +2,19 @@
 import CoreImage
 @preconcurrency import VideoToolbox
 
+/// How much of the picture the upscaler works from.
+nonisolated enum UpscaleQuality: Sendable {
+    /// The whole picture goes through the model, which then enlarges it 4× and the result is averaged down to 2×.
+    case best
+    /// Half-size pictures go through the model, which enlarges them 4× straight to 2×. About four times quicker, but
+    /// the model only sees half the detail.
+    case fast
+}
+
 /// Apple's machine-learning video upscaler (VideoToolbox super resolution, macOS 26).
 /// The system model only works at 4×, on pictures up to 1920×1080, so an export
 /// upscales 4× and then averages down to a 2× result: a 1080p clip becomes 4K.
+/// `UpscaleQuality.fast` feeds it half-size pictures instead, so no averaging is needed.
 /// The model downloads once, the first time it is needed.
 nonisolated final class FrameUpscaler {
     /// The only scale the system model supports.
@@ -48,8 +58,11 @@ nonisolated final class FrameUpscaler {
     private var previous: (source: VTFrameProcessorFrame, output: VTFrameProcessorFrame)?
     private var started = false
 
-    init(width: Int, height: Int) throws {
-        if let problem = Self.problem(width: width, height: height) { throw problem }
+    init(width sourceWidth: Int, height sourceHeight: Int, quality: UpscaleQuality) throws {
+        if let problem = Self.problem(width: sourceWidth, height: sourceHeight) { throw problem }
+        // What the model sees: the picture itself, or half of it (kept even, as video sizes are).
+        let width = quality == .fast ? max(2, (sourceWidth / 4) * 2) : sourceWidth
+        let height = quality == .fast ? max(2, (sourceHeight / 4) * 2) : sourceHeight
         guard let configuration = VTSuperResolutionScalerConfiguration(
             frameWidth: width, frameHeight: height, scaleFactor: Self.modelFactor, inputType: .video,
             usePrecomputedFlow: false, qualityPrioritization: .normal,

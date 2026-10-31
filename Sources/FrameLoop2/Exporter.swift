@@ -11,13 +11,16 @@ nonisolated enum ExportFormat: Sendable, CaseIterable {
     case mp4Small
     /// Twice the clip's size, enlarged with Apple's machine-learning upscaler.
     case mp4Upscaled
+    /// The same, quicker: the upscaler works from half-size pictures.
+    case mp4UpscaledFast
     case gif
 
     var title: String {
         switch self {
         case .mp4Original: "Export MP4 H.264 · original size and frame rate"
         case .mp4Small: "Export MP4 H.264 · 24 FPS · 768×512 (letterboxed)"
-        case .mp4Upscaled: "Export MP4 H.264 · upscaled 2× · original frame rate"
+        case .mp4Upscaled: "Export MP4 H.264 · upscaled 2× · best quality (slower)"
+        case .mp4UpscaledFast: "Export MP4 H.264 · upscaled 2× · faster, softer"
         case .gif: "Export animated GIF · 15 FPS · max 640 px wide"
         }
     }
@@ -25,14 +28,23 @@ nonisolated enum ExportFormat: Sendable, CaseIterable {
     var jobTitle: String {
         switch self {
         case .gif: "Exporting GIF…"
-        case .mp4Upscaled: "Upscaling video…"
+        case .mp4Upscaled, .mp4UpscaledFast: "Upscaling video…"
         default: "Exporting video…"
         }
     }
 
     /// Why this clip cannot be exported in this format, or nil when it can.
+    /// How this format upscales, or nil when it does not.
+    var upscaleQuality: UpscaleQuality? {
+        switch self {
+        case .mp4Upscaled: .best
+        case .mp4UpscaledFast: .fast
+        default: nil
+        }
+    }
+
     func problem(for video: LoadedVideo) -> String? {
-        guard self == .mp4Upscaled else { return nil }
+        guard upscaleQuality != nil else { return nil }
         return FrameUpscaler.problem(width: video.width, height: video.height)?.errorDescription
     }
 }
@@ -80,13 +92,37 @@ nonisolated enum Exporter {
     static let gifMaxWidth = 640
     static let gifMaxFrames = 1_500
 
-    private static func generator(for video: LoadedVideo) -> AVAssetImageGenerator {
+    static func generator(for video: LoadedVideo) -> AVAssetImageGenerator {
         let generator = AVAssetImageGenerator(asset: video.asset)
         generator.videoComposition = video.videoComposition
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
         generator.appliesPreferredTrackTransform = true
         return generator
+    }
+
+    /// One decoded picture. Some files list frames that start past the end of the video track
+    /// (an exact seek there fails with "Cannot Open"), so a failed frame is asked for again
+    /// just inside the end with a little tolerance, which shows the last frame the file can decode.
+    static func image(at time: CMTime, from images: AVAssetImageGenerator, video: LoadedVideo) async throws -> CGImage {
+        do {
+            return try await images.image(at: time).image
+        } catch {
+            try Task.checkCancellation()
+            let end = try await video.asset.load(.duration)
+            guard time >= end else { throw error }
+            images.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 90_000)
+            defer { images.requestedTimeToleranceBefore = .zero }
+            return try await images.image(at: end - CMTime(value: 1, timescale: 1_000)).image
+        }
+    }
+
+    /// "about 2 min left", from how long the first `done` of `total` steps took.
+    static func remaining(since start: Date, done: Int, total: Int) -> String {
+        let seconds = Date().timeIntervalSince(start) / Double(max(1, done)) * Double(total - done)
+        if seconds < 5 { return "almost done" }
+        if seconds < 90 { return "about \(Int((seconds / 5).rounded()) * 5) s left" }
+        return "about \(Int((seconds / 60).rounded())) min left"
     }
 
     private static func cmTime(_ seconds: Double) -> CMTime {
@@ -108,7 +144,7 @@ nonisolated enum Exporter {
     @concurrent
     static func screenshot(video: LoadedVideo, frame: Int, mirrored: Bool, adjustments: Adjustments, to url: URL) async throws {
         let time = cmTime(video.frames[frame].seekTime)
-        let image = try await generator(for: video).image(at: time).image
+        let image = try await image(at: time, from: generator(for: video), video: video)
         let final = mirrorIfNeeded(PictureAdjuster.apply(adjustments, to: image), mirrored)
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
         else { throw ExportError.writerFailed("cannot create \(url.lastPathComponent)") }
@@ -118,7 +154,7 @@ nonisolated enum Exporter {
 
     @concurrent
     static func exportMP4(video: LoadedVideo, order: [Int], speed: Double, mirrored: Bool, adjustments: Adjustments,
-                          target: MP4Target, upscale: Bool = false, to url: URL,
+                          target: MP4Target, upscale: UpscaleQuality? = nil, to url: URL,
                           phase: @escaping @Sendable (String) -> Void = { _ in },
                           progress: @escaping @Sendable (Double) -> Void) async throws {
         let fps = target.fps
@@ -129,8 +165,8 @@ nonisolated enum Exporter {
                                        frameWidth: width, frameHeight: height)
         // The model may need to download first, so a Mac without it fails before any file is written.
         var upscaler: FrameUpscaler?
-        if upscale {
-            let scaler = try FrameUpscaler(width: video.width, height: video.height)
+        if let upscale {
+            let scaler = try FrameUpscaler(width: video.width, height: video.height, quality: upscale)
             phase("Downloading the upscaling model…")
             try await scaler.prepareModel(progress: progress)
             phase("Upscaling video…")
@@ -169,15 +205,16 @@ nonisolated enum Exporter {
 
         let images = generator(for: video)
         // Upscaling starts from the picture at its own size; an ordinary export never needs more than twice the box.
-        if !upscale { images.maximumSize = CGSize(width: box.width * 2, height: box.height * 2) }
+        if upscale == nil { images.maximumSize = CGSize(width: box.width * 2, height: box.height * 2) }
         var cachedIndex = -1
         var cachedImage: CGImage?
         var cachedUpscale: CVPixelBuffer?
+        let began = Date()
         do {
             for (tick, source) in outputFrames.enumerated() {
                 try Task.checkCancellation()
                 if source != cachedIndex {
-                    let image = try await images.image(at: cmTime(video.frames[source].seekTime)).image
+                    let image = try await image(at: cmTime(video.frames[source].seekTime), from: images, video: video)
                     if let upscaler {
                         // The look and the mirror go on first, so the model enlarges the picture people see.
                         let looked = PictureAdjuster.apply(adjustments, mirrored: mirrored, to: CIImage(cgImage: image))
@@ -220,13 +257,20 @@ nonisolated enum Exporter {
                 audio?.feed(audioInput, until: ahead)
                 while !input.isReadyForMoreMediaData {
                     try Task.checkCancellation()
+                    // A failed writer never takes another frame, so stop instead of waiting for it.
+                    if writer.status == .failed { throw ExportError.writerFailed(writer.error?.localizedDescription ?? "unknown error") }
                     try await Task.sleep(for: .milliseconds(4))
                     // The writer may hold the video back until audio is further along.
                     ahead += 0.25
                     audio?.feed(audioInput, until: ahead)
                 }
                 adaptor.append(buffer, withPresentationTime: cmTime(Double(tick) / fps))
-                if tick % 6 == 0 { progress(Double(tick) / Double(outputFrames.count)) }
+                if tick % 6 == 0 {
+                    progress(Double(tick) / Double(outputFrames.count))
+                    if upscaler != nil, tick >= 6 {
+                        phase("Upscaling video… \(remaining(since: began, done: tick, total: outputFrames.count))")
+                    }
+                }
             }
             input.markAsFinished()
             while let remaining = audio, !remaining.isDone {
@@ -269,7 +313,7 @@ nonisolated enum Exporter {
             for (tick, source) in outputFrames.enumerated() {
                 try Task.checkCancellation()
                 if source != cachedIndex {
-                    let image = try await images.image(at: cmTime(video.frames[source].seekTime)).image
+                    let image = try await image(at: cmTime(video.frames[source].seekTime), from: images, video: video)
                     cachedImage = mirrorIfNeeded(PictureAdjuster.apply(adjustments, to: image), mirrored)
                     cachedIndex = source
                 }

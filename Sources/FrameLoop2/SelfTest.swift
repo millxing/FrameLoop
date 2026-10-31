@@ -280,6 +280,72 @@ enum SelfTest {
         model.mirrored = false
         model.segment = nil
         model.toast = nil
+
+        // Some files list their last frames past the end of the video track; asking for one must still give a picture.
+        let pastEnd = (try? await video.asset.load(.duration)) ?? .zero
+        let lastPicture = try? await Exporter.image(at: pastEnd + CMTime(value: 20, timescale: 1_000),
+                                                    from: Exporter.generator(for: video), video: video)
+        check("S-037 a frame past the end of the track still decodes", lastPicture != nil)
+
+        // The faster mode halves what the model sees and still returns twice the size.
+        model.setSegmentStart(frame: 0)
+        model.setSegmentEnd(frame: 5)
+        model.toast = nil
+        model.message = nil
+        model.export(.mp4UpscaledFast)
+        await model.waitForJob()
+        if let url = model.toast?.url {
+            let size = try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first?.load(.naturalSize)
+            check("S-037 the faster upscale is also 1280×720", size == CGSize(width: 1280, height: 720), "\(String(describing: size))")
+        } else { check("S-037 the faster upscale finished", false, model.message ?? "no file") }
+        model.segment = nil
+        model.toast = nil
+
+        // The biggest clip the model takes: Full HD becomes 4K.
+        let sample = video.url
+        let big = sample.deletingLastPathComponent().appending(path: "fullhd.mp4")
+        try? FileManager.default.removeItem(at: big)
+        try await SampleVideo.make(at: big, frames: 12, width: 1920, height: 1080, sound: true)
+        await model.open(big)
+        model.setSegmentStart(frame: 0)
+        model.setSegmentEnd(frame: 5)
+        model.message = nil
+        let start = Date()
+        model.export(.mp4Upscaled)
+        await model.waitForJob()
+        let seconds = Date().timeIntervalSince(start)
+        print("S-037 Full HD upscale of 6 frames took \(String(format: "%.1f", seconds)) s")
+        if let url = model.toast?.url {
+            let size = try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first?.load(.naturalSize)
+            check("S-037 a Full HD clip upscales to 3840×2160", size == CGSize(width: 3840, height: 2160), "\(String(describing: size))")
+        } else { check("S-037 the Full HD upscale finished", false, model.message ?? "no file") }
+        model.segment = nil
+        model.toast = nil
+
+        // SELFTEST_CLIP=<file> upscales that clip's first SELFTEST_FRAMES (default 60) frames and reports how long it took.
+        if let path = ProcessInfo.processInfo.environment["SELFTEST_CLIP"] {
+            func note(_ text: String) { FileHandle.standardError.write(Data("SELFTEST_CLIP \(text)\n".utf8)) }
+            note("opening")
+            await model.open(URL(fileURLWithPath: path))
+            note("opened: \(model.video?.frames.count ?? -1) frames, message \(model.message ?? "none")")
+            model.setSegmentStart(frame: 0)
+            let wanted = Int(ProcessInfo.processInfo.environment["SELFTEST_FRAMES"] ?? "") ?? 60
+            model.setSegmentEnd(frame: min(wanted - 1, (model.video?.frames.count ?? 1) - 1))
+            model.message = nil
+            let begin = Date()
+            switch ProcessInfo.processInfo.environment["SELFTEST_FORMAT"] {
+            case "original": model.export(.mp4Original)
+            case "fast": model.export(.mp4UpscaledFast)
+            default: model.export(.mp4Upscaled)
+            }
+            await model.waitForJob()
+            print("SELFTEST_CLIP \(model.video?.width ?? 0)×\(model.video?.height ?? 0): "
+                  + "\(String(format: "%.1f", Date().timeIntervalSince(begin))) s for \(wanted) frames, "
+                  + "result \(model.toast?.url?.lastPathComponent ?? "none"), message \(model.message ?? "none")")
+            model.segment = nil
+            model.toast = nil
+        }
+        await model.open(sample)
     }
 
     /// S-029 faster speeds, S-030 default loop, S-031 original-size MP4, S-032 mirror, S-033 adjustments.

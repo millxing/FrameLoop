@@ -311,7 +311,10 @@ Status: done
 As the user, I choose "Export MP4 (Upscaled 2×)" and get a video twice the size, enlarged by Apple's machine-learning upscaler.
 Acceptance:
 - [self] A 640×360 clip exports as 1280×720 at the same frame rate, with the mirror and adjustments kept.
+- [self] A "Faster but Softer" variant gives the same size, working from half-size pictures (about three times quicker on Full HD, with visibly less detail than Best Quality).
+- [self] A clip whose last frames start past the end of its video track still exports; those frames show the last decodable picture.
 - [self] The item is disabled with an explanation for clips over 1920×1080, and on Macs without the upscaler.
+- [manual] The progress sheet shows an estimate of the time left.
 - [manual] The first use shows "Downloading the upscaling model…" with progress, then "Upscaling video…"; Cancel stops it and leaves no file.
 - [manual] The result looks sharper than a plain enlargement.
 Status: done
