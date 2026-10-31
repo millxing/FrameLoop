@@ -164,6 +164,7 @@ enum SelfTest {
 
         try await lookChecks(model: model)
         try await tipChecks()
+        appearanceChecks()
         try await panelFitChecks(model: model)
         try await audioChecks(model: model)
         try await editChecks(model: model, sample: sample)
@@ -195,6 +196,21 @@ enum SelfTest {
         model.showAdjustments = false
         window.setFrame(original, display: true)
         try await Task.sleep(for: .seconds(0.4))
+    }
+
+    /// S-036 Light, Dark, or System applies app-wide.
+    private static func appearanceChecks() {
+        let store = ThemeStore.shared
+        let before = store.mode
+        defer { store.mode = before }
+        check("S-036 the mode starts as System in a test run", before == .system)
+        store.mode = .dark
+        check("S-036 Dark sets the dark appearance", NSApp.appearance?.name == .darkAqua)
+        store.mode = .light
+        check("S-036 Light sets the light appearance", NSApp.appearance?.name == .aqua)
+        store.mode = .system
+        check("S-036 System follows the Mac", NSApp.appearance == nil)
+        check("S-036 there are three choices", AppearanceMode.allCases.map(\.title) == ["System", "Light", "Dark"])
     }
 
     /// S-035 hovering a control shows its tooltip after a short rest, and leaving hides it.

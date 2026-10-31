@@ -4,7 +4,7 @@ import SwiftUI
 
 /// One accent color in three shades. Everything else is Apple's look.
 /// People pick the accent in Settings > Appearance (AppearanceSettings.swift).
-/// Light and dark mode follow the Mac: there is no app-specific mode setting.
+/// Light, Dark, or System (follow the Mac) is `AppearanceMode`, also in Settings > Appearance.
 ///   APP_ACCENT=mint FrameLoop2     run with another accent, to compare
 struct Theme: Identifiable, Hashable {
     struct Shades: Hashable {
@@ -45,6 +45,31 @@ struct Theme: Identifiable, Hashable {
     ]
 }
 
+/// Light, Dark, or follow the Mac. Applied to the whole app, so the Settings
+/// window and every player window change together.
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    /// nil lets the app follow the Mac.
+    var appearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 /// The chosen accent, saved in UserDefaults. Views that read `theme` redraw
 /// when it changes.
 @Observable
@@ -65,6 +90,19 @@ final class ThemeStore {
         didSet { UserDefaults.standard.set(themeID, forKey: "appearance.accent") }
     }
 
+    /// Light, Dark, or System. Test runs (APP_STORE) always use System and save nothing.
+    var mode: AppearanceMode {
+        didSet {
+            if !Store.isOverridden { UserDefaults.standard.set(mode.rawValue, forKey: "appearance.mode") }
+            applyMode()
+        }
+    }
+
+    /// Sets the app-wide appearance. Also called at launch, once NSApp exists.
+    func applyMode() {
+        NSApp?.appearance = mode.appearance
+    }
+
     /// True while the Mac's accent is Multicolor.
     private(set) var macIsMulticolor = ThemeStore.readMulticolor()
 
@@ -79,6 +117,8 @@ final class ThemeStore {
     private init() {
         themeID = ProcessInfo.processInfo.environment["APP_ACCENT"]
             ?? UserDefaults.standard.string(forKey: "appearance.accent") ?? Self.defaultID
+        mode = Store.isOverridden ? .system
+            : UserDefaults.standard.string(forKey: "appearance.mode").flatMap(AppearanceMode.init) ?? .system
         NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.macIsMulticolor = ThemeStore.readMulticolor() }

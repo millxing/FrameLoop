@@ -298,6 +298,15 @@ Status: done
 - Bundled GPL ffmpeg build: ffmpeg is optional and read from Homebrew; no redistribution.
 - Backup of app.asar versions: git replaces it.
 
+### S-036 Choose Light, Dark, or System
+As the user, I pick Light, Dark, or System in Settings > Appearance, and every window follows at once.
+Screens: settings-appearance-light.png, settings-appearance-dark.png
+Acceptance:
+- [self] Dark, Light, and System set the app-wide appearance; System follows the Mac.
+- [snap] The Appearance tab shows a three-way control above the accent preview.
+- [manual] The choice is kept after relaunch.
+Status: done
+
 ## Known gaps
 - S-023 HDR: AVFoundation plays HDR natively; not checked with a real HDR clip.
 - S-029..S-033: the player's picture was checked through AVFoundation frames; the live window was not viewed (no Screen Recording permission).

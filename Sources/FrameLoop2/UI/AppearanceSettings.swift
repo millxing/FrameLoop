@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// Settings > Appearance: the accent color. Light and dark mode follow the Mac.
+/// Settings > Appearance: Light, Dark, or System, and the accent color.
 struct AppearanceSettings: View {
     @Bindable private var store = ThemeStore.shared
 
     var body: some View {
         Section {
+            Picker("Appearance", selection: $store.mode) {
+                ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
             AccentPreview()
                 .padding(.vertical, Space.xs)
             LabeledContent("Accent color") {
