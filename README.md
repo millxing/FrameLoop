@@ -6,6 +6,8 @@ FrameLoop is a native Mac video player for people who want to look closer. Study
 
 Made for motion studies, sports footage, animation reference, and visual experiments.
 
+**[Download FrameLoop for Apple Silicon](https://github.com/millxing/FrameLoop/releases/latest)** — macOS 26 or later. Signed with Developer ID and notarized by Apple. Open the DMG, then drag FrameLoop to Applications.
+
 ## Small moments, precise control
 
 Step forward or back one frame at a time. Mark a start and end, then watch that section repeat. Slow playback to a quarter speed to inspect a movement, or choose a faster speed to review footage.
