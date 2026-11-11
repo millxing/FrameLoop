@@ -1,8 +1,8 @@
 # FrameLoop
 
-**Find the moment. Shape the loop. Keep every frame.**
+**Find the moment. Shape the loop.**
 
-FrameLoop is a native Mac video player for people who want to look closer. Study a movement, build a visual loop, or capture the exact frame you need. Go from a local video to an MP4, animated GIF, or PNG without opening a full video editor.
+FrameLoop is a native Mac video player for people who want to look closer. Study a movement, build a visual loop, or capture the exact frame you need. Go from a local video to an MP4, animated GIF, or PNG without opening a full video editor. Signed by the developer and notarized by Apple.
 
 Made for motion studies, sports footage, animation reference, and visual experiments.
 
@@ -27,7 +27,6 @@ Mirror the image and adjust brightness, contrast, saturation, exposure, and hue.
 - **Capture a frame** as a PNG.
 - **Export an MP4** at the source size and frame rate.
 - **Make an animated GIF** for a short, repeating moment.
-- **Use a fixed-size MP4 preset** for 768 × 512 output at 24 fps.
 
 Files receive automatic numbers, so you can keep exploring without naming every capture. Remove a selected section, append another video, or undo the last edit. Your original files stay unchanged.
 
