@@ -1,5 +1,5 @@
 import Foundation
-import FrameLoop2Kit
+import FrameLoopKit
 import Observation
 
 struct FolderSlot: Codable, Identifiable, Hashable {
@@ -16,7 +16,7 @@ enum Store {
     }
 
     /// Sample videos and exports for tests and snapshots.
-    static let scratch = URL(fileURLWithPath: "/tmp/FrameLoop2-scratch", isDirectory: true)
+    static let scratch = URL(fileURLWithPath: "/tmp/FrameLoop-scratch", isDirectory: true)
 }
 
 @Observable

@@ -1,4 +1,4 @@
-# FrameLoop2
+# FrameLoop
 
 A native Mac video player for stepping through footage frame by frame, looping a chosen segment (forward or ping-pong), and exporting stills, clips, and GIFs. For one person who studies and clips video.
 

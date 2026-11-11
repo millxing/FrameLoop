@@ -1,11 +1,11 @@
 @preconcurrency import AVFoundation
 import AppKit
-import FrameLoop2Kit
+import FrameLoopKit
 import ImageIO
 
 /// Self-test for agents: runs the app's real functions on test clips, prints PASS or FAIL per check,
 /// and quits with exit code 0 or 1.
-///   APP_STORE=/tmp/FrameLoop2-self.store /Applications/FrameLoop2.app/Contents/MacOS/FrameLoop2 --selftest
+///   APP_STORE=/tmp/FrameLoop-self.store /Applications/FrameLoop.app/Contents/MacOS/FrameLoop --selftest
 /// (tools/selftest.sh does this.) Add a check for every story with logic.
 @MainActor
 enum SelfTest {

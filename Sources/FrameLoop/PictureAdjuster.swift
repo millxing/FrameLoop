@@ -1,6 +1,6 @@
 @preconcurrency import AVFoundation
 import CoreImage
-import FrameLoop2Kit
+import FrameLoopKit
 
 /// Applies the brightness, contrast, saturation, exposure, and hue controls with Core Image,
 /// to the live picture (as layer filters) and to exported frames.

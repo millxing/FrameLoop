@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import FrameLoop2Kit
+@testable import FrameLoopKit
 
 @Test func counterSkipsExistingFiles() {
     let names = ["ss00000003.png", "ss00000007.png", "loop00000009.mp4", "notes.txt"]

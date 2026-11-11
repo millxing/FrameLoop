@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
+<!-- Keep the existing identifier so preferences survive the rename. -->
 <key>CFBundleIdentifier</key><string>com.robschoen.frameloop2</string>
-<key>CFBundleName</key><string>FrameLoop2</string>
-<key>CFBundleDisplayName</key><string>FrameLoop2</string>
-<key>CFBundleExecutable</key><string>FrameLoop2</string>
+<key>CFBundleName</key><string>FrameLoop</string>
+<key>CFBundleDisplayName</key><string>FrameLoop</string>
+<key>CFBundleExecutable</key><string>FrameLoop</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1</string>

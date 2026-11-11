@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Builds FrameLoop2 and installs it to /Applications/FrameLoop2.app.
-# Build products live in ~/Library/Developer/FrameLoop2, outside the repo
+# Builds FrameLoop and installs it to /Applications/FrameLoop.app.
+# Build products live in ~/Library/Developer/FrameLoop, outside the repo
 # (and outside Dropbox or iCloud, which would try to sync them).
 #
 # Usage: ./build.sh            release build, install
@@ -8,7 +8,7 @@
 #        ./build.sh --open     install, then quit the running copy and open the new one
 set -euo pipefail
 here=${0:A:h}
-name="FrameLoop2"
+name="FrameLoop"
 scratch="$HOME/Library/Developer/$name/build"
 config=release
 [[ " $* " == *" --debug "* ]] && config=debug

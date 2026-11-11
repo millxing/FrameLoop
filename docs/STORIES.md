@@ -1,4 +1,4 @@
-# FrameLoop2 stories
+# FrameLoop stories
 
 Snapshot pages (for `[snap]`): `player-empty`, `player-loaded`, `player-segment`, `sidebar-folders`, `export-progress`, `settings-folders`, `settings-saves`.
 
@@ -349,9 +349,9 @@ Acceptance:
 Status: done
 
 ### S-042 Open a video from Finder without a stray window
-As the user, I open videos from Finder, with FrameLoop2 running or not, and get one window per video and no blank extra window.
+As the user, I open videos from Finder, with FrameLoop running or not, and get one window per video and no blank extra window.
 Acceptance:
-- [manual] `open -a FrameLoop2 a.mp4` cold gives 1 window; again while running gives 1 more; three files at once give three windows (checked with System Events window counts).
+- [manual] `open -a FrameLoop a.mp4` cold gives 1 window; again while running gives 1 more; three files at once give three windows (checked with System Events window counts).
 Status: done
 
 ## Known gaps

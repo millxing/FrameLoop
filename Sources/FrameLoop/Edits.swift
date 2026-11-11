@@ -1,5 +1,5 @@
 @preconcurrency import AVFoundation
-import FrameLoop2Kit
+import FrameLoopKit
 
 /// Turns an edit list into something AVFoundation plays: the file itself when nothing was cut, otherwise a composition
 /// that points into the original files. Nothing is copied or re-encoded.

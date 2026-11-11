@@ -1,21 +1,21 @@
 import AppKit
-import FrameLoop2Kit
+import FrameLoopKit
 import SwiftUI
 
-// FrameLoop2
-//   FrameLoop2                      the app
-//   APP_STORE=<file> FrameLoop2     test mode: settings and output stay in /tmp/FrameLoop2-scratch
-//   APP_SNAPSHOT=<dir> FrameLoop2   save a PNG of every page and Settings tab in light and dark mode, then quit
-//   FrameLoop2 --selftest           run the self-test and quit with 0 or 1 (tools/selftest.sh)
-//   APP_ACCENT=<id> FrameLoop2      run with another accent from Theme.all (UI/Theme.swift)
-//   APP_GRID=1 FrameLoop2           draw the grid and the layout probes over the window
+// FrameLoop
+//   FrameLoop                      the app
+//   APP_STORE=<file> FrameLoop     test mode: settings and output stay in /tmp/FrameLoop-scratch
+//   APP_SNAPSHOT=<dir> FrameLoop   save a PNG of every page and Settings tab in light and dark mode, then quit
+//   FrameLoop --selftest           run the self-test and quit with 0 or 1 (tools/selftest.sh)
+//   APP_ACCENT=<id> FrameLoop      run with another accent from Theme.all (UI/Theme.swift)
+//   APP_GRID=1 FrameLoop           draw the grid and the layout probes over the window
 
 @main
-struct FrameLoop2App: App {
+struct FrameLoopApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        WindowGroup("FrameLoop2", for: WindowRequest.self) { $request in
+        WindowGroup("FrameLoop", for: WindowRequest.self) { $request in
             PlayerWindow(request: request)
                 .themed()
                 .overlay { if GridOverlay.enabled { GridOverlay() } }

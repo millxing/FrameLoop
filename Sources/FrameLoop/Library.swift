@@ -1,4 +1,4 @@
-import FrameLoop2Kit
+import FrameLoopKit
 import Foundation
 import Observation
 

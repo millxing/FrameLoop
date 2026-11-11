@@ -1,6 +1,6 @@
 @preconcurrency import AVFoundation
 import AppKit
-import FrameLoop2Kit
+import FrameLoopKit
 import Observation
 import SwiftUI
 
@@ -87,7 +87,7 @@ final class PlayerModel {
 
     func open(_ url: URL) async {
         guard MediaFormats.isSupported(url) else {
-            message = "FrameLoop2 supports \(MediaFormats.supported.map { $0.uppercased() }.joined(separator: ", ")) files."
+            message = "FrameLoop supports \(MediaFormats.supported.map { $0.uppercased() }.joined(separator: ", ")) files."
             return
         }
         guard FileManager.default.fileExists(atPath: url.path) else {

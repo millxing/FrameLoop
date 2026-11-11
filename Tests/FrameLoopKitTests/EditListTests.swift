@@ -1,5 +1,5 @@
 import Testing
-@testable import FrameLoop2Kit
+@testable import FrameLoopKit
 
 private func list() -> EditList {
     EditList(pieces: [EditPiece(source: 0, start: 0, end: 10)])

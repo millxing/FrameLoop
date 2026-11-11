@@ -1,6 +1,6 @@
 @preconcurrency import AVFoundation
 import AppKit
-import FrameLoop2Kit
+import FrameLoopKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -72,7 +72,7 @@ struct PlayerWindow: View {
         } detail: {
             PlayerScreen(model: model)
         }
-        .navigationTitle(model.video?.url.lastPathComponent ?? "FrameLoop2")
+        .navigationTitle(model.video?.url.lastPathComponent ?? "FrameLoop")
         .toolbar { PlayerToolbar(model: model) }
         .focusedSceneValue(\.player, model)
         .tracksFullScreen(model)

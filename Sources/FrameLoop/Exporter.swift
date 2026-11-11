@@ -1,7 +1,7 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import CoreImage
-import FrameLoop2Kit
+import FrameLoopKit
 import ImageIO
 import UniformTypeIdentifiers
 

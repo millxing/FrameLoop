@@ -1,5 +1,5 @@
 import Testing
-@testable import FrameLoop2Kit
+@testable import FrameLoopKit
 
 private func frames(_ count: Int, fps: Double = 10) -> [FrameInfo] {
     (0..<count).map { FrameInfo(index: $0, pts: Double($0) / fps, duration: 1 / fps) }

@@ -1,5 +1,5 @@
 @preconcurrency import AVFoundation
-import FrameLoop2Kit
+import FrameLoopKit
 
 /// The sound for an MP4 export: the segment's audio cut to match the picture, reversed where the picture plays
 /// backward, and stretched (pitch kept) where it plays slower.

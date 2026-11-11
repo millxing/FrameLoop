@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "FrameLoop2",
+    name: "FrameLoop",
     platforms: [.macOS(.v26)],
     targets: [
         // Rules and data logic with no SwiftUI, so tests run without the app.
-        .target(name: "FrameLoop2Kit"),
+        .target(name: "FrameLoopKit"),
         .executableTarget(
-            name: "FrameLoop2",
-            dependencies: ["FrameLoop2Kit"],
+            name: "FrameLoop",
+            dependencies: ["FrameLoopKit"],
             // App code runs on the main thread unless you say otherwise.
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
-        .testTarget(name: "FrameLoop2KitTests", dependencies: ["FrameLoop2Kit"]),
+        .testTarget(name: "FrameLoopKitTests", dependencies: ["FrameLoopKit"]),
     ]
 )

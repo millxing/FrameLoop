@@ -1,28 +1,28 @@
-# FrameLoop2
+# FrameLoop
 
 A native macOS app in SwiftUI. It runs on this Mac only, with a local
 SwiftData database and no server.
 
 ## Layout
 
-- `Sources/FrameLoop2/` the app. `App.swift` has the window, menus, and the database location.
-- `Sources/FrameLoop2Kit/` rules and data logic with no SwiftUI. Tests in `Tests/FrameLoop2KitTests/`.
+- `Sources/FrameLoop/` the app. `App.swift` has the window, menus, and the database location.
+- `Sources/FrameLoopKit/` rules and data logic with no SwiftUI. Tests in `Tests/FrameLoopKitTests/`.
 - `Package.swift` a Swift package. There is no Xcode project.
-- `build.sh` builds, signs, and installs `/Applications/FrameLoop2.app`.
+- `build.sh` builds, signs, and installs `/Applications/FrameLoop.app`.
 - `Icon/AppIcon.icon` the app icon, an Icon Composer file (JSON plus SVG layers). `build.sh` compiles it with `tools/make_icon.sh`; `tools/icon_review.sh` renders every look into one PNG.
 - `docs/` the brief, the screen index, and the user stories, when they exist.
 
 ## Build and check
 
 - Build and install: `./build.sh`. Add `--open` to restart the app with the new build. The build shows warnings; fix them.
-- Unit tests: `swift test --scratch-path ~/Library/Developer/FrameLoop2/test-build`.
+- Unit tests: `swift test --scratch-path ~/Library/Developer/FrameLoop/test-build`.
 - Self-test (the app's real functions on a /tmp store): `tools/selftest.sh`. Exit 0 when every check passes. Add a check for every story with logic in `SelfTest.swift`.
 - After every UI change, take snapshots with sample data and look at them: `tools/snap.sh`.
-  It writes `/tmp/FrameLoop2-shots/<page>-light.png` and `-dark.png` for every sidebar page, and `settings-<tab>-light.png` and `-dark.png` for every Settings tab, then quits. `APP_SNAPSHOT_PAGES=all,settings tools/snap.sh` limits the pages.
+  It writes `/tmp/FrameLoop-shots/<page>-light.png` and `-dark.png` for every sidebar page, and `settings-<tab>-light.png` and `-dark.png` for every Settings tab, then quits. `APP_SNAPSHOT_PAGES=all,settings tools/snap.sh` limits the pages.
   For a panel, sheet, or popover, add a capture to `Snapshot.swift` like the Settings loop.
 - Snapshots, seed data, and the self-test refuse to run without `APP_STORE` in /tmp.
-- Never test against the real database in `~/Library/Application Support/FrameLoop2/`.
-- Then check the grid: `tools/grid-lint.sh` and `swift tools/check-layout.swift /tmp/FrameLoop2-shots/*-layout.json`. Both print PASS.
+- Never test against the real database in `~/Library/Application Support/FrameLoop/`.
+- Then check the grid: `tools/grid-lint.sh` and `swift tools/check-layout.swift /tmp/FrameLoop-shots/*-layout.json`. Both print PASS.
 - A change is done when the build has no errors, the grid checks pass, and you looked at the light and dark snapshots.
 
 ## Gotchas
@@ -31,6 +31,7 @@ SwiftData database and no server.
 - Builds need Xcode's toolchain: the command-line tools' SwiftPM is broken on this Mac. Run `export DEVELOPER_DIR="/Volumes/OWC Express 1M2 001/Xcode.app/Contents/Developer"` first.
 - Snapshots of the main window are degraded (blank sidebar, glass, and video) until the app that runs them has Screen Recording permission.
 - Icon build needs `sudo xcodebuild -runFirstLaunch` once; until then build.sh skips the icon.
+- The bundle identifier remains `com.robschoen.frameloop2` to preserve existing preferences after the rename.
 - Stories live in docs/STORIES.md; the old Electron app is in ~/Dropbox/CC/FrameLoop for behavior reference.
 
 ## Design rules

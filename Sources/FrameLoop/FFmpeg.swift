@@ -6,7 +6,7 @@ nonisolated enum FFmpeg {
     enum Plan { case remux(hevc: Bool), transcode }
 
     static var directory: URL {
-        FileManager.default.temporaryDirectory.appending(path: "FrameLoop2", directoryHint: .isDirectory)
+        FileManager.default.temporaryDirectory.appending(path: "FrameLoop", directoryHint: .isDirectory)
     }
 
     static func removeAllProxies() {

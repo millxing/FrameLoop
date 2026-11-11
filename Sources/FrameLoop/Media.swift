@@ -1,5 +1,5 @@
 @preconcurrency import AVFoundation
-import FrameLoop2Kit
+import FrameLoopKit
 
 /// One video file that edits draw from.
 nonisolated struct EditSource: Sendable {
@@ -44,7 +44,7 @@ nonisolated enum MediaError: LocalizedError {
         switch self {
         case .noVideo: "This file does not contain a readable video stream."
         case .noFrames: "No decodable video frames were found."
-        case .unsupported(let name): "FrameLoop2 cannot open \(name)."
+        case .unsupported(let name): "FrameLoop cannot open \(name)."
         }
     }
 }

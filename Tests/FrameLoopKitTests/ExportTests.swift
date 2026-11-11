@@ -1,5 +1,5 @@
 import Testing
-@testable import FrameLoop2Kit
+@testable import FrameLoopKit
 
 @Test func outputFramesAtSourceRate() {
     let result = ExportPlan.outputFrames(order: [3, 4, 5], durations: Array(repeating: 0.1, count: 10), speed: 1, fps: 10)
