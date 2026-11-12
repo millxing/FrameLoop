@@ -524,8 +524,13 @@ struct Controls: View {
 
     private var volume: some View {
         HStack(spacing: Space.sm) {
-            Image(systemName: model.volume == 0 ? "speaker.slash" : "speaker.wave.2").foregroundStyle(.secondary)
-                .tip("Volume")
+            Button("Mute", systemImage: model.volume == 0 ? "speaker.slash" : "speaker.wave.2") {
+                model.volume = 0
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .tip("Mute")
             Slider(value: $model.volume, in: 0...1).frame(width: 96)
                 .accessibilityLabel("Volume")
                 .tip("Volume")
