@@ -56,7 +56,7 @@ No account. No video uploads. Your footage stays local.
 
 FrameLoop is an early release. The current Apple Silicon app and DMG have passed Apple notarization and Gatekeeper checks.
 
-One playback timing check remains unresolved: in two signed-app test runs, 2× playback reached frame 27 after 0.6 seconds; the test expects frames 28–50. The other 120 checks passed. The original development build passed all 121 checks. The cause has not been established.
+Version 0.1.1 adds click-to-mute on the speaker beside the volume slider. All 30 unit tests passed, and the installed app's mute and volume recovery controls were checked. The signed-app self-test recorded 79 passes and three full-screen failures, then ended without a final summary. The previously reported 2× playback timing check passed in this run. Full-screen behavior and the remaining self-tests still need verification.
 
 ## Build and release
 
